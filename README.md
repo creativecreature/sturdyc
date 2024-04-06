@@ -23,19 +23,20 @@ The package exports the following functions:
 - Use [`sturdyc.GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch) to have the cache fetch and store a record if it doesn't exist.
 - Use [`sturdyc.GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch) to have the cache fetch and store each record in a batch if any of them doesn't exist.
 
-To utilize these functions, we will first have to set up a client to manage our
-configuration:
+To utilize these functions, you will first have to set up a client to manage
+your configuration:
 
 ```go
 func main() {
-	// Maximum number of entries in the sturdyc.
+	// Maximum number of entries in the cache.
 	capacity := 10000
-	// Number of shards to use for the sturdyc.
+	// Number of shards to use.
 	numShards := 10
 	// Time-to-live for cache entries.
 	ttl := 2 * time.Hour
 	// Percentage of entries to evict when the cache is full. Setting this
-	// to 0 will make set a no-op if the cache has reached its capacity.
+	// to 0 will make set a no-op when the cache has reached its capacity.
+	// Expired records are evicted continiously by a background job.
 	evictionPercentage := 10
 
 	// Create a cache client with the specified configuration.
