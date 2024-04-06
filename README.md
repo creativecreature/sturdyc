@@ -11,6 +11,7 @@ applications, such as:
 - **request deduplication**
 - **refresh buffering**
 
+# Installing
 ```sh
 go get github.com/creativecreature/sturdyc
 ```
