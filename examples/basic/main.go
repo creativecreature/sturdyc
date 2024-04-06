@@ -15,7 +15,7 @@ func main() {
 	// Time-to-live for cache entries.
 	ttl := 2 * time.Hour
 	// Percentage of entries to evict when the cache is full. Setting this
-	// to 0 will make writes noops if the cache has reached its capacity.
+	// to 0 will make set a no-op if the cache has reached its capacity.
 	evictionPercentage := 10
 
 	// Create a cache client with the specified configuration.

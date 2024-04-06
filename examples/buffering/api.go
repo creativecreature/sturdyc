@@ -20,7 +20,7 @@ func NewOrderAPI() *OrderAPI {
 	// Time-to-live for cache entries.
 	ttl := 2 * time.Hour
 	// Percentage of entries to evict when the cache is full. Setting this
-	// to 0 will make writes noops if the cache has reached its capacity.
+	// to 0 will make set a no-op if the cache has reached its capacity.
 	evictionPercentage := 10
 	// Set a minimum and maximum refresh delay for the sturdyc. This is
 	// used to spread out the refreshes for entries evenly over time.
