@@ -9,7 +9,7 @@ applications, such as:
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
 - [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
-- **permutated cache keys**
+- [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
 - **refresh buffering**
 
 # Installing
@@ -68,27 +68,11 @@ To prevent this, we can enable **stampede protection**:
 
 ```go
 func main() {
-	// ===========================================================
-	// ===================== Basic configuration =================
-	// ===========================================================
-	// Maximum number of entries in the sturdyc.
-	capacity := 10000
-	// Number of shards to use for the sturdyc.
-	numShards := 10
-	// Time-to-live for cache entries.
-	ttl := 2 * time.Hour
-	// Percentage of entries to evict when the cache is full. Setting this
-	// to 0 will make set a no-op if the cache has reached its capacity.
-	evictionPercentage := 10
-
-	// ===========================================================
-	// =================== Stampede protection ===================
-	// ===========================================================
 	// Set a minimum and maximum refresh delay for the sturdyc. This is
 	// used to spread out the refreshes for our entries evenly over time.
 	minRefreshDelay := time.Millisecond * 10
 	maxRefreshDelay := time.Millisecond * 30
-	// The base for exponential backoff when retrying a refresh.
+	// The base used for exponential backoff when retrying a refresh.
 	retryBaseDelay := time.Millisecond * 10
 	// NOTE: Ignore this for now, it will be shown in the next example.
 	storeMisses := false
@@ -100,9 +84,12 @@ func main() {
 }
 ```
 
-With this configuration, the cache will maintain fresh data that is renewed
-every 10-30 milliseconds while protecting the actual data source. To
-demonstrate, we can create this simple API client:
+With this configuration, the cache will prevent records from expiring by
+enqueueing  refreshes when a key is requested again at a random interval
+between 10 and 30 milliseconds. Performing the refreshes this way allows unused
+keys to expire.
+
+To demonstrate this, we can create a simple API client:
 
 ```go
 type API struct {
@@ -162,6 +149,7 @@ go run .
 2024/04/07 09:05:29 Value: value
 2024/04/07 09:05:29 Value: value
 2024/04/07 09:05:29 Fetching value for key: key
+...
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/stampede)
@@ -176,7 +164,7 @@ However, it could also be caused by a slow ingestion process. Perhaps it takes
 some time for a new entity to propagate through a distributed system.
 
 The cache allows us to store these IDs as missing records, while refreshing
-them like any other record. To illustrate, we can extend the previous example
+them like any other entity. To illustrate, we can extend the previous example
 to enable this functionality:
 
 ```go
@@ -270,17 +258,18 @@ func main() {
 2024/04/07 09:42:49 Value: value
 2024/04/07 09:42:49 Value: value
 2024/04/07 09:42:49 Fetching value for key: key
+...
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/missing)
 
-## Batch endpoints
-The main challenge with caching batchable endpoints is reducing the number of
-keys. To illustrate, let's say that we have 10 000 records, and an endpoint for
-fetching them that allows for batches of 20.
+# Batch endpoints
+One challenge with caching batchable endpoints is that you have to find a way
+to reduce the number of keys. To illustrate, let's say that we have 10 000
+records, and an endpoint for fetching them that allows for batches of 20.
 
-Now, let's calculate the number of cache key combinations if we were to simply
-create the keys from the query params:
+Now, let's calculate the number of combinations if we were to create the keys
+from the query params:
 
 $$ C(n, k) = \binom{n}{k} = \frac{n!}{k!(n-k)!} $$
 
@@ -296,9 +285,11 @@ and this is if we're sending perfect batches of 20. If we were to do 1 to 20
 IDs (not just exactly 20 each time) the total number of combinations would be
 the sum of combinations for each k from 1 to 20.
 
-With `sturdyc`, each record is instead cached individually.
+`sturdyc` caches each record individually, which effectively prevents factorial
+increases in cache keys.
 
-Let's look at a brief example. This time, we'll start with the API client:
+To see how this works, we can look at a small example application. This time,
+we'll start with the API client:
 
 ```go
 type API struct {
@@ -349,8 +340,8 @@ func main() {
 
 	// Each record has been cached individually. To illustrate this, we can keep
 	// fetching a random number of records from the original batch, plus a new ID.
-	// Looking at the looks, we'll see that the cache only fetches the id that
-	// wasn't in the original batch.
+	// Looking at the looks, we'll should be able to see that the cache only
+	// fetches the id that wasn't present in the original batch.
 	for i := 1; i <= 100; i++ {
 		// Get N ids from the original batch.
 		recordsToFetch := rand.IntN(10) + 1
@@ -366,7 +357,7 @@ func main() {
 ```
 
 Running this code, we can see that we only end up fetching the randomized ID,
-while getting cache hits for ids 1-10:
+while continiously getting cache hits for ids 1-10:
 
 ```sh
 ...
@@ -383,3 +374,134 @@ while getting cache hits for ids 1-10:
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/batch)
+
+# Cache key permutations
+If you're attempting to cache data from an upstream system, the ID alone may be
+insufficient to uniquely identify the record in your cache. The endpoint you're
+calling might accept a variety of options that transform the data in different
+ways. Therefore, it's important to consider this and store records for each
+unique set of options.
+
+To showcase this, we can create a simple API client that interacts with a
+service for retrieving order statuses:
+
+```go
+type OrderOptions struct {
+	CarrierName        string
+	LatestDeliveryTime string
+}
+
+type OrderAPI struct {
+	cacheClient *sturdyc.Client
+}
+
+func NewOrderAPI(client *sturdyc.Client) *OrderAPI {
+	return &OrderAPI{
+		cacheClient: client,
+	}
+}
+
+func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOptions) (map[string]string, error) {
+	// We use the  PermutedBatchKeyFn when an ID isn't enough to uniquely identify a
+	// record. The cache is going to store each id once per set of options. In a more
+	// realistic scenario, the opts would be query params or arguments to a DB query.
+	cacheKeyFn := a.cacheClient.PermutatedBatchKeyFn("key", opts)
+
+	// We'll create a fetchFn with a closure that captures the options. For this
+	// simple example, it logs and returns the status for each order, but you could
+	// just as easily have called an external API.
+	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
+		log.Printf("Fetching: %v, carrier: %s, delivery time: %s\n", cacheMisses, opts.CarrierName, opts.LatestDeliveryTime)
+		response := map[string]string{}
+		for _, id := range cacheMisses {
+			response[id] = fmt.Sprintf("Available for %s", opts.CarrierName)
+		}
+		return response, nil
+	}
+	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+}
+```
+
+The main difference from the previous example, is that we're using the
+`PermutatedBatchKeyFn` function. Internally, the cache uses reflection to
+extract the names and values of every exported field, and uses them to build
+the cache keys.
+
+To illustrate, we can write a small program:
+
+```go
+func main() {
+	// ...
+
+	// Create a new cache client with the specified configuration.
+	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+	)
+
+	// We will fetch these IDs using various option sets.
+	ids := []string{"id1", "id2", "id3"}
+	optionSetOne := OrderOptions{CarrierName: "FEDEX", LatestDeliveryTime: "2024-04-06"}
+	optionSetTwo := OrderOptions{CarrierName: "DHL", LatestDeliveryTime: "2024-04-07"}
+	optionSetThree := OrderOptions{CarrierName: "UPS", LatestDeliveryTime: "2024-04-08"}
+
+	orderClient := NewOrderAPI(cacheClient)
+	ctx := context.Background()
+
+	// Next, we'll seed our cache by fetching the entire list of IDs for all options sets.
+	log.Println("Filling the cache with all IDs for all option sets")
+	orderClient.OrderStatus(ctx, ids, optionSetOne)
+	orderClient.OrderStatus(ctx, ids, optionSetTwo)
+	orderClient.OrderStatus(ctx, ids, optionSetThree)
+	log.Println("Cache filled")
+}
+```
+
+ At this point, the cache has stored each record individually for each option set:
+ - FEDEX-2024-04-06-id1
+ - DHL-2024-04-07-id1
+ - UPS-2024-04-08-id1
+ - etc..
+
+ Next, we'll add a sleep to make that all of the records are due for a refresh,
+ and then request the keys:
+
+```go
+func main() {
+	// ...
+
+	// Sleep to make sure that all records are due for a refresh.
+	time.Sleep(maxRefreshDelay + 1)
+
+	// Fetch each id for each option set.
+	for i := 0; i < len(ids); i++ {
+		orderClient.OrderStatus(ctx, []string{ids[i]}, optionSetOne)
+		orderClient.OrderStatus(ctx, []string{ids[i]}, optionSetTwo)
+		orderClient.OrderStatus(ctx, []string{ids[i]}, optionSetThree)
+	}
+
+	// Sleep for a second to allow the refresh logs to print.
+	time.Sleep(time.Second)
+}
+```
+
+and the output from running this program would then look something like this:
+
+```sh
+go run .
+2024/04/07 13:33:56 Filling the cache with all IDs for all option sets
+2024/04/07 13:33:56 Fetching: [id1 id2 id3], carrier: FEDEX, delivery time: 2024-04-06
+2024/04/07 13:33:56 Fetching: [id1 id2 id3], carrier: DHL, delivery time: 2024-04-07
+2024/04/07 13:33:56 Fetching: [id1 id2 id3], carrier: UPS, delivery time: 2024-04-08
+2024/04/07 13:33:56 Cache filled
+2024/04/07 13:33:58 Fetching: [id3], carrier: UPS, delivery time: 2024-04-08
+2024/04/07 13:33:58 Fetching: [id1], carrier: FEDEX, delivery time: 2024-04-06
+2024/04/07 13:33:58 Fetching: [id1], carrier: UPS, delivery time: 2024-04-08
+2024/04/07 13:33:58 Fetching: [id2], carrier: UPS, delivery time: 2024-04-08
+2024/04/07 13:33:58 Fetching: [id2], carrier: FEDEX, delivery time: 2024-04-06
+2024/04/07 13:33:58 Fetching: [id3], carrier: FEDEX, delivery time: 2024-04-06
+2024/04/07 13:33:58 Fetching: [id2], carrier: DHL, delivery time: 2024-04-07
+2024/04/07 13:33:58 Fetching: [id3], carrier: DHL, delivery time: 2024-04-07
+2024/04/07 13:33:58 Fetching: [id1], carrier: DHL, delivery time: 2024-04-07
+```
+
+The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/permutations)
