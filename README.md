@@ -315,6 +315,9 @@ func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, er
 	// The fetchFn is only going to retrieve the IDs that are not in the cache.
 	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
 		log.Printf("Cache miss. Fetching ids: %s\n", strings.Join(cacheMisses, ", "))
+		// Batch functions should return a map where the key is the id of the record.
+		// If you have storage of missing records enabled, any ID that isn't present
+		// in this map is going to be stored as a cache miss.
 		response := make(map[string]string, len(cacheMisses))
 		for _, id := range cacheMisses {
 			response[id] = "value"
@@ -326,8 +329,8 @@ func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, er
 }
 ```
 
-and we're going to use the same configuration as the previous example, so I've
-omitted it for brevity:
+and we're going to use the same cache configuration as the previous example, so
+I've omitted it for brevity:
 
 ```go
 func main() {
@@ -360,8 +363,8 @@ func main() {
 }
 ```
 
-Running this code, we can see that we're only end up fetching the randomized
-ID, while getting cache hits for ids 1-10:
+Running this code, we can see that we only end up fetching the randomized ID,
+while getting cache hits for ids 1-10:
 
 ```sh
 ...
