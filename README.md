@@ -6,7 +6,8 @@
 `Sturdyc` offers all the features you would expect from a caching library,
 along with additional functionality designed to help you build robust
 applications, such as:
-- **stampede protection**
+- [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
+- [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
 - **permutated cache keys**
 - **request deduplication**
 - **refresh buffering**
@@ -165,7 +166,7 @@ go run .
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/stampede)
 
-# Non-existent keys
+# Non-existent records
 Another factor to consider is non-existent keys. It could be an ID that has
 been added manually to a CMS with a typo that leads to no data being returned
 from the upstream source. This can significantly increase our systems latency,
