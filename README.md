@@ -19,9 +19,9 @@ go get github.com/creativecreature/sturdyc
 # At a glance
 The package exports the following functions:
 - Use [`sturdyc.Set`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Set) to write a record to the cache.
-- Use [`sturdyc.Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Get) to retrieve a record from the cache.
-- Use [`sturdyc.GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch) to have the cache fetch and store a record if it doesn't exist.
-- Use [`sturdyc.GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch) to have the cache fetch and store each record in a batch if any of them doesn't exist.
+- Use [`sturdyc.Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Get) to get a record from the cache.
+- Use [`sturdyc.GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch) to have the cache fetch and store a record.
+- Use [`sturdyc.GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch) to have the cache fetch and store a batch of records.
 
 To utilize these functions, you will first have to set up a client to manage
 your configuration:
@@ -54,3 +54,113 @@ func main() {
 	}
 }
 ```
+
+Next, we'll look at some of the more advanced features.
+
+# Stampede protection
+Cache stampedes occur when many requests for a particular piece of data (which
+has just expired or been evicted from the cache) come in at once. This can
+cause all requests to fetch the data concurrently, subsequently causing a
+significant load on the underlying data source.
+
+To prevent this, we can enable stampede protection:
+
+```go
+func main() {
+	// ===========================================================
+	// ===================== Basic configuration =================
+	// ===========================================================
+	// Maximum number of entries in the sturdyc.
+	capacity := 10000
+	// Number of shards to use for the sturdyc.
+	numShards := 10
+	// Time-to-live for cache entries.
+	ttl := 2 * time.Hour
+	// Percentage of entries to evict when the cache is full. Setting this
+	// to 0 will make set a no-op if the cache has reached its capacity.
+	evictionPercentage := 10
+
+	// ===========================================================
+	// =================== Stampede protection ===================
+	// ===========================================================
+	// Set a minimum and maximum refresh delay for the sturdyc. This is
+	// used to spread out the refreshes for our entries evenly over time.
+	minRefreshDelay := time.Millisecond * 10
+	maxRefreshDelay := time.Millisecond * 30
+	// The base for exponential backoff when retrying a refresh.
+	retryBaseDelay := time.Millisecond * 10
+	// NOTE: Ignore this for now, it will be shown in the next example.
+	storeMisses := false
+
+	// Create a cache client with the specified configuration.
+	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+	)
+}
+```
+
+With this configuration, the cache will maintain fresh data that is renewed
+every 10-30 milliseconds while protecting the actual data source. To
+demonstrate, we can create this simple API client:
+
+```go
+type API struct {
+	cacheClient *sturdyc.Client
+}
+
+func NewAPI(c *sturdyc.Client) *API {
+	return &API{c}
+}
+
+func (a *API) Get(ctx context.Context, key string) (string, error) {
+	// This could be a call to a rate limited service, a database query, etc.
+	fetchFn := func(_ context.Context) (string, error) {
+		log.Printf("Fetching value for key: %s\n", key)
+		return "value", nil
+	}
+	return sturdyc.GetFetch(ctx, a.cacheClient, key, fetchFn)
+}
+```
+
+and use it in our `main` function:
+
+```go
+func main() {
+	// ...
+
+	// Create a cache client with the specified configuration.
+	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+	)
+
+	// Create a new API instance with the cache client.
+	api := NewAPI(cacheClient)
+
+	// We are going to retrieve the values every 10 milliseconds, however the
+	// logs will reveal that actual refreshes fluctuate randomly within a 10-30
+	// millisecond range. Even if this loop is executed across multiple
+	// goroutines, the API call frequency will maintain this variability,
+	// ensuring we avoid overloading the API with requests.
+	for i := 0; i < 100; i++ {
+		val, _ := api.Get(context.Background(), "key")
+		log.Printf("Value: %s\n", val)
+		time.Sleep(minRefreshDelay)
+	}
+}
+```
+
+Running this program, we're going to see output that looks something like this:
+
+```sh
+go run .
+2024/04/07 09:05:29 Fetching value for key: key
+2024/04/07 09:05:29 Value: value
+2024/04/07 09:05:29 Value: value
+2024/04/07 09:05:29 Fetching value for key: key
+2024/04/07 09:05:29 Value: value
+2024/04/07 09:05:29 Value: value
+2024/04/07 09:05:29 Value: value
+2024/04/07 09:05:29 Fetching value for key: key
+```
+
+The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/stampede)
