@@ -272,6 +272,8 @@ func main() {
 2024/04/07 09:42:49 Fetching value for key: key
 ```
 
+The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/missing)
+
 ## Batch endpoints
 The main challenge with caching batchable endpoints is reducing the number of
 keys. To illustrate, let's say that we have 10 000 records, and an endpoint for
@@ -379,3 +381,5 @@ while getting cache hits for ids 1-10:
 2024/04/07 11:09:58 map[1:value 2:value 3:value 4:value 5:value 520:value 6:value 7:value 8:value]
 ...
 ```
+
+The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/batch)
