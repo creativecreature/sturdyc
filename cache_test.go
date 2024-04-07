@@ -369,7 +369,7 @@ func TestGetFetchMissingRecord(t *testing.T) {
 	clock.Add(maxRefreshDelay * 1)
 	fetchObserver.Response("1")
 	_, err = sturdyc.GetFetch(ctx, c, "1", fetchObserver.Fetch)
-	if !errors.Is(err, sturdyc.ErrMissingRecordCooldown) {
+	if !errors.Is(err, sturdyc.ErrMissingRecord) {
 		t.Fatalf("expected ErrMissingRecordCooldown, got %v", err)
 	}
 	<-fetchObserver.FetchCompleted

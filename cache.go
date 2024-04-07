@@ -207,7 +207,7 @@ func GetFetch[T any](ctx context.Context, client *Client, key string, fetchFn Fe
 	}
 
 	if shouldIgnore {
-		return value, ErrMissingRecordCooldown
+		return value, ErrMissingRecord
 	}
 
 	// If we don't have this item in our cache, we'll fetch it

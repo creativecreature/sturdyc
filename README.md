@@ -63,7 +63,7 @@ has just expired or been evicted from the cache) come in at once. This can
 cause all requests to fetch the data concurrently, subsequently causing a
 significant load on the underlying data source.
 
-To prevent this, we can enable stampede protection:
+To prevent this, we can enable **stampede protection**:
 
 ```go
 func main() {
@@ -164,3 +164,109 @@ go run .
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/stampede)
+
+# Non-existent keys
+Another factor to consider is non-existent keys. It could be an ID that has
+been added manually to a CMS with a typo that leads to no data being returned
+from the upstream source. This can significantly increase our systems latency,
+as we're never able to get a cache hit and serve from memory.
+
+However, it could also be caused by a slow ingestion process. Perhaps it takes
+some time for a new entity to propagate through a distributed system.
+
+The cache allows us to store these IDs as missing records, while refreshing
+them like any other record. To illustrate, we can extend the previous example
+to enable this functionality:
+
+```go
+func main() {
+	// ...
+
+	// Tell the cache to store missing records.
+	storeMisses := true
+
+	// Create a cache client with the specified configuration.
+	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+	)
+
+	// Create a new API instance with the cache client.
+	api := NewAPI(cacheClient)
+
+	// ...
+	for i := 0; i < 100; i++ {
+		val, err := api.Get(context.Background(), "key")
+		if errors.Is(err, sturdyc.ErrMissingRecord) {
+			log.Println("Record does not exist.")
+		}
+		if err == nil {
+			log.Printf("Value: %s\n", val)
+		}
+		time.Sleep(minRefreshDelay)
+	}
+}
+```
+
+Next, we'll modify the API client to return the `ErrStoreMissingRecord` error
+for the first *3* calls. This error instructs the cache to store it as a missing
+record:
+
+```go
+type API struct {
+	count       int
+	cacheClient *sturdyc.Client
+}
+
+func NewAPI(c *sturdyc.Client) *API {
+	return &API{
+		count:       0,
+		cacheClient: c,
+	}
+}
+
+func (a *API) Get(ctx context.Context, key string) (string, error) {
+	fetchFn := func(_ context.Context) (string, error) {
+		log.Printf("Fetching value for key: %s\n", key)
+		a.count++
+		if a.count < 3 {
+			return "", sturdyc.ErrStoreMissingRecord
+		}
+		return "value", nil
+	}
+	return sturdyc.GetFetch(ctx, a.cacheClient, key, fetchFn)
+}
+```
+
+and then call it:
+
+```go
+func main() {
+	// ...
+
+	for i := 0; i < 100; i++ {
+		val, err := api.Get(context.Background(), "key")
+		if errors.Is(err, sturdyc.ErrMissingRecord) {
+			log.Println("Record does not exist.")
+		}
+		if err == nil {
+			log.Printf("Value: %s\n", val)
+		}
+		time.Sleep(minRefreshDelay)
+	}
+}
+```
+
+```sh
+2024/04/07 09:42:49 Fetching value for key: key
+2024/04/07 09:42:49 Record does not exist.
+2024/04/07 09:42:49 Record does not exist.
+2024/04/07 09:42:49 Record does not exist.
+2024/04/07 09:42:49 Fetching value for key: key
+2024/04/07 09:42:49 Record does not exist.
+2024/04/07 09:42:49 Record does not exist.
+2024/04/07 09:42:49 Record does not exist.
+2024/04/07 09:42:49 Fetching value for key: key
+2024/04/07 09:42:49 Value: value
+2024/04/07 09:42:49 Value: value
+2024/04/07 09:42:49 Fetching value for key: key
+```
