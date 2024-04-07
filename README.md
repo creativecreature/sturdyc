@@ -137,7 +137,8 @@ func main() {
 }
 ```
 
-Running this program, we're going to see output that looks something like this:
+Running this program, we're going to see that the value gets refreshed once
+every 2-3 retrievals:
 
 ```sh
 go run .
@@ -245,6 +246,9 @@ func main() {
 }
 ```
 
+Running this program, we'll see that the record is missing during the first 3
+refreshes and then transitions into having a value:
+
 ```sh
 2024/04/07 09:42:49 Fetching value for key: key
 2024/04/07 09:42:49 Record does not exist.
@@ -268,8 +272,8 @@ One challenge with caching batchable endpoints is that you have to find a way
 to reduce the number of keys. To illustrate, let's say that we have 10 000
 records, and an endpoint for fetching them that allows for batches of 20.
 
-Now, let's calculate the number of combinations if we were to create the keys
-from the query params:
+Now, let's calculate the number of combinations if we were to create the cache
+keys from the query params:
 
 $$ C(n, k) = \binom{n}{k} = \frac{n!}{k!(n-k)!} $$
 
@@ -357,7 +361,8 @@ func main() {
 ```
 
 Running this code, we can see that we only end up fetching the randomized ID,
-while continiously getting cache hits for ids 1-10:
+while continuously getting cache hits for IDs 1-10, regardless of what the
+batch looks like:
 
 ```sh
 ...
@@ -422,12 +427,12 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 }
 ```
 
-The main difference from the previous example, is that we're using the
+The main difference from the previous example is that we're using the
 `PermutatedBatchKeyFn` function. Internally, the cache uses reflection to
 extract the names and values of every exported field, and uses them to build
 the cache keys.
 
-To illustrate, we can write a small program:
+To demonstrate this, we can write another small program:
 
 ```go
 func main() {
@@ -462,8 +467,8 @@ func main() {
  - UPS-2024-04-08-id1
  - etc..
 
- Next, we'll add a sleep to make that all of the records are due for a refresh,
- and then request the keys:
+ Next, we'll add a sleep to make sure that all of the records are due for a
+ refresh, and then request the ids individually for each set of options:
 
 ```go
 func main() {
@@ -484,7 +489,8 @@ func main() {
 }
 ```
 
-and the output from running this program would then look something like this:
+Running this program, we can see that the records are refreshed once per unique
+id+option combination:
 
 ```sh
 go run .
@@ -512,10 +518,11 @@ endpoint is batchable when we're performing the refreshes.
 
 To make this more efficient, we can enable the *refresh buffering*
 functionality. Internally, the cache is going to create a buffer for each
-permutation of our options. It is then going to collect ids to refresh until it
-reaches a certain size, or exceeds a time threshold.
+permutation of our options. It is then going to collect ids until it reaches a
+certain size, or exceeds a time threshold.
 
-The only change we have to make is enabling the functionality:
+The only change we have to make to the example above is to enable this
+functionality:
 
 ```go
 func main() {
@@ -535,6 +542,7 @@ func main() {
 	// ...
 }
 ```
+
 and now we can see that the cache performs the refreshes in batches per
 permutation of our query params:
 
