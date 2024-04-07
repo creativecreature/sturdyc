@@ -273,11 +273,12 @@ func main() {
 ```
 
 ## Batch endpoints
-For batchable endpoints, you have to break the ids a part and cache them
-individually. If you try to cache the entire batch, you'll quickly run into
-problems. To illustrate, let's say that we have 10 000 records, and a endpoint
-for fetching them that allows for batches up to 20. To calculate the number of
-cache keys we can do this:
+The main challenge with caching batchable endpoints is reducing the number of
+keys. To illustrate, let's say that we have 10 000 records, and a endpoint for
+fetching them that allows for batches of 20.
+
+Now, let's calculate the number of cache key combinations if we were to simply
+create the key from the query params:
 
 $$ C(n, k) = \binom{n}{k} = \frac{n!}{k!(n-k)!} $$
 
@@ -289,3 +290,6 @@ This results in an approximate value of:
 
 $$ \approx 4.032 \times 10^{61} $$
 
+and this is if we're sending perfect batches of 20. If we were to do 1 to 20
+IDs (not just exactly 20 each time) the total number of combinations would be
+the sum of combinations for each k from 1 to 20.
