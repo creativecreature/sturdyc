@@ -5,12 +5,11 @@
 
 `Sturdyc` offers all the features you would expect from a caching library,
 along with additional functionality designed to help you build robust
-applications, such as:
-- [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
+applications, such as: - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
 - [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
 - [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
-- **refresh buffering**
+- [**refresh buffering**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-buffering)
 
 # Installing
 ```sh
@@ -505,3 +504,49 @@ go run .
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/permutations)
+
+# Refresh buffering
+As seen in the example above, we're not really utilizing the fact that the
+endpoint is batchable when we're performing the refreshes.
+
+To make this more efficient, we can enable the *refresh buffering*
+functionality. Internally, the cache is going to create a buffer for each
+permutation of our options. It is then going to collect ids to refresh until it
+reaches a certain size, or exceeds a time threshold.
+
+The only change we have to make is enabling the functionality:
+
+```go
+func main() {
+	// ...
+
+	// With refresh buffering enabled, the cache will buffer refreshes
+	// until the batch size is reached or the buffer timeout is hit.
+	batchSize := 3
+	batchBufferTimeout := time.Second * 30
+
+	// Create a new cache client with the specified configuration.
+	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
+	)
+
+	// ...
+}
+```
+and now we can see that the cache performs the refreshes in batches per
+permutation of our query params:
+
+```sh
+go run .
+2024/04/07 13:45:42 Filling the cache with all IDs for all option sets
+2024/04/07 13:45:42 Fetching: [id1 id2 id3], carrier: FEDEX, delivery time: 2024-04-06
+2024/04/07 13:45:42 Fetching: [id1 id2 id3], carrier: DHL, delivery time: 2024-04-07
+2024/04/07 13:45:42 Fetching: [id1 id2 id3], carrier: UPS, delivery time: 2024-04-08
+2024/04/07 13:45:42 Cache filled
+2024/04/07 13:45:44 Fetching: [id1 id2 id3], carrier: FEDEX, delivery time: 2024-04-06
+2024/04/07 13:45:44 Fetching: [id1 id3 id2], carrier: DHL, delivery time: 2024-04-07
+2024/04/07 13:45:44 Fetching: [id1 id2 id3], carrier: UPS, delivery time: 2024-04-08
+```
+
+The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/buffering)

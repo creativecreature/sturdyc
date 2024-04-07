@@ -5,7 +5,7 @@ run:
   # Don't lint the vendor directory
   skip-dirs:
     - ^vendor$
-    - cmd/compare
+    - examples
 
   # Fail if the error was met.
   issues-exit-code: 1
