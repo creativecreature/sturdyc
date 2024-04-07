@@ -55,7 +55,7 @@ func main() {
 }
 ```
 
-Next, we'll look at some of the more advanced features.
+Next, we'll look at some of the more *advanced features*.
 
 # Stampede protection
 Cache stampedes occur when many requests for a particular piece of data (which
@@ -84,9 +84,9 @@ func main() {
 ```
 
 With this configuration, the cache will prevent records from expiring by
-enqueueing  refreshes when a key is requested again at a random interval
-between 10 and 30 milliseconds. Performing the refreshes this way allows unused
-keys to expire.
+enqueueing refreshes when a key is requested again at a random interval between
+10 and 30 milliseconds. Performing the refreshes upon cache key retrieval,
+rather than at a fixed interval, allows unused keys to expire.
 
 To demonstrate this, we can create a simple API client:
 
