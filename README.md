@@ -8,8 +8,8 @@ along with additional functionality designed to help you build robust
 applications, such as:
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
+- [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
 - **permutated cache keys**
-- **request deduplication**
 - **refresh buffering**
 
 # Installing
@@ -271,3 +271,21 @@ func main() {
 2024/04/07 09:42:49 Value: value
 2024/04/07 09:42:49 Fetching value for key: key
 ```
+
+## Batch endpoints
+For batchable endpoints, you have to break the ids a part and cache them
+individually. If you try to cache the entire batch, you'll quickly run into
+problems. To illustrate, let's say that we have 10 000 records, and a endpoint
+for fetching them that allows for batches up to 20. To calculate the number of
+cache keys we can do this:
+
+$$ C(n, k) = \binom{n}{k} = \frac{n!}{k!(n-k)!} $$
+
+For $n = 10,000$ and $k = 20$, this becomes:
+
+$$ C(10,000, 20) = \binom{10,000}{20} = \frac{10,000!}{20!(10,000-20)!} $$
+
+This results in an approximate value of:
+
+$$ \approx 4.032 \times 10^{61} $$
+
