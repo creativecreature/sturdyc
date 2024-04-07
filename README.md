@@ -274,11 +274,11 @@ func main() {
 
 ## Batch endpoints
 The main challenge with caching batchable endpoints is reducing the number of
-keys. To illustrate, let's say that we have 10 000 records, and a endpoint for
+keys. To illustrate, let's say that we have 10 000 records, and an endpoint for
 fetching them that allows for batches of 20.
 
 Now, let's calculate the number of cache key combinations if we were to simply
-create the key from the query params:
+create the keys from the query params:
 
 $$ C(n, k) = \binom{n}{k} = \frac{n!}{k!(n-k)!} $$
 
@@ -293,3 +293,86 @@ $$ \approx 4.032 \times 10^{61} $$
 and this is if we're sending perfect batches of 20. If we were to do 1 to 20
 IDs (not just exactly 20 each time) the total number of combinations would be
 the sum of combinations for each k from 1 to 20.
+
+With `sturdyc`, each record is instead cached individually.
+
+Let's look at a brief example. This time, we'll start with the API client:
+
+```go
+type API struct {
+	cacheClient *sturdyc.Client
+}
+
+func NewAPI(c *sturdyc.Client) *API {
+	return &API{c}
+}
+
+func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, error) {
+	// We are going to pass the cache a key function that prefixes each id.
+	// This makes it possible to save the same id for different data sources.
+	cacheKeyFn := a.cacheClient.BatchKeyFn("some-prefix")
+
+	// The fetchFn is only going to retrieve the IDs that are not in the cache.
+	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
+		log.Printf("Cache miss. Fetching ids: %s\n", strings.Join(cacheMisses, ", "))
+		response := make(map[string]string, len(cacheMisses))
+		for _, id := range cacheMisses {
+			response[id] = "value"
+		}
+		return response, nil
+	}
+
+	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+}
+```
+
+and we're going to use the same configuration as the previous example, so I've
+omitted it for brevity:
+
+```go
+func main() {
+	// ...
+
+	// Create a new API instance with the cache client.
+	api := NewAPI(cacheClient)
+
+	// Seed the cache with ids 1-10.
+	log.Println("Seeding ids 1-10")
+	ids := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
+	api.GetBatch(context.Background(), ids)
+	log.Println("Seed completed")
+
+	// Each record has been cached individually. To illustrate this, we can keep
+	// fetching a random number of records from the original batch, plus a new ID.
+	// Looking at the looks, we'll see that the cache only fetches the id that
+	// wasn't in the original batch.
+	for i := 1; i <= 100; i++ {
+		// Get N ids from the original batch.
+		recordsToFetch := rand.IntN(10) + 1
+		batch := make([]string, recordsToFetch)
+		copy(batch, ids[:recordsToFetch])
+		// Add a random ID between 1 and 100 to the batch.
+		batch = append(batch, strconv.Itoa(rand.IntN(1000)+10))
+		values, _ := api.GetBatch(context.Background(), batch)
+		// Print the records we retrieved from the cache.
+		log.Println(values)
+	}
+}
+```
+
+Running this code, we can see that we're only end up fetching the randomized
+ID, while getting cache hits for ids 1-10:
+
+```sh
+...
+2024/04/07 11:09:58 Seed completed
+2024/04/07 11:09:58 Cache miss. Fetching ids: 173
+2024/04/07 11:09:58 map[1:value 173:value 2:value 3:value 4:value]
+2024/04/07 11:09:58 Cache miss. Fetching ids: 12
+2024/04/07 11:09:58 map[1:value 12:value 2:value 3:value 4:value]
+2024/04/07 11:09:58 Cache miss. Fetching ids: 730
+2024/04/07 11:09:58 map[1:value 2:value 3:value 4:value 730:value]
+2024/04/07 11:09:58 Cache miss. Fetching ids: 520
+2024/04/07 11:09:58 map[1:value 2:value 3:value 4:value 5:value 520:value 6:value 7:value 8:value]
+...
+```
