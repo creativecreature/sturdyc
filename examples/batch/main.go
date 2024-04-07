@@ -75,7 +75,7 @@ func main() {
 
 	// Each record has been cached individually. To illustrate this, we can keep
 	// fetching a random number of records from the original batch, plus a new ID.
-	// Looking at the looks, we'll see that the cache only fetches the id that
+	// Looking at the logs, we'll see that the cache only fetches the id that
 	// wasn't in the original batch.
 	for i := 1; i <= 100; i++ {
 		// Get N ids from the original batch.
