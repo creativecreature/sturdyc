@@ -3,9 +3,13 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/creativecreature/sturdyc)](https://goreportcard.com/report/github.com/creativecreature/sturdyc)
 [![codecov](https://codecov.io/gh/creativecreature/sturdyc/graph/badge.svg?token=CYSKW3Z7E6)](https://codecov.io/gh/creativecreature/sturdyc)
 
-`Sturdyc` offers all the features you would expect from a caching library,
-along with additional functionality designed to help you build robust
-applications, such as:
+`Sturdyc` is a highly concurrent cache that supports non-blocking reads and has
+a configurable number of shards to reduce lock contention during write
+operations. Evictions are performed per shard at O(N) time complexity using
+[quickselect](https://en.wikipedia.org/wiki/Quickselect).
+
+It has all the functionality you would expect from a caching library, along with
+additional features designed to help you build robust applications, such as:
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
 - [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
