@@ -148,20 +148,14 @@ func (s *shard) set(key string, value any, isMissingRecord bool) bool {
 	}
 
 	//nolint: exhaustruct // we are going to set the remaining fields based on config.
-	e := &entry{
-		key:             key,
-		value:           value,
-		expiresAt:       now.Add(s.ttl),
-		isMissingRecord: isMissingRecord,
-	}
-
+	newEntry := &entry{key: key, value: value, expiresAt: now.Add(s.ttl), isMissingRecord: isMissingRecord}
 	if s.refreshesEnabled {
 		// Add a random padding to the refresh times in order to spread them out more evenly.
 		padding := time.Duration(rand.Int64N(int64(s.maxRefreshTime - s.minRefreshTime)))
-		e.refreshAt = now.Add(s.minRefreshTime + padding)
-		e.numOfRefreshRetries = 0
+		newEntry.refreshAt = now.Add(s.minRefreshTime + padding)
+		newEntry.numOfRefreshRetries = 0
 	}
-	s.entries[key] = e
+	s.entries[key] = newEntry
 
 	return evict
 }

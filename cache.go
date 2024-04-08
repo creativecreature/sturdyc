@@ -20,12 +20,19 @@ type MetricsRecorder interface {
 	ObserveCacheSize(callback func() int)
 }
 
-type KeyFn func(string) string
-
+// Fetch represents a function that can be used to fetch a single record from a data source.
 type FetchFn[T any] func(ctx context.Context) (T, error)
 
+// BatchFetchFn represents a function that can be used to fetch multiple records from a data source.
 type BatchFetchFn[T any] func(ctx context.Context, ids []string) (map[string]T, error)
 
+type BatchResponse[T any] map[string]T
+
+// KeyFn is called invoked for each record that a batch fetch
+// operation returns. It is used to create unique cache keys.
+type KeyFn func(id string) string
+
+// Client holds the cache configuration.
 type Client struct {
 	ttl              time.Duration
 	shards           []*shard
@@ -40,38 +47,15 @@ type Client struct {
 	retryBaseDelay   time.Duration
 	storeMisses      bool
 
-	bufferMutex           sync.Mutex
 	bufferRefreshes       bool
-	maxBufferSize         int
+	batchMutex            sync.Mutex
+	batchSize             int
 	bufferTimeout         time.Duration
-	bufferIdentifierIDs   map[string][]string
-	bufferIdentifierChans map[string]chan<- []string
+	bufferPermutationIDs  map[string][]string
+	bufferPermutationChan map[string]chan<- []string
 
 	useRelativeTimeKeyFormat bool
 	keyTruncation            time.Duration
-}
-
-// validateArgs is a helper function that panics if the arguments are invalid.
-func validateArgs(capacity, numShards int, ttl time.Duration, evictionPercentage int) {
-	if capacity <= 0 {
-		panic("capacity must be greater than 0")
-	}
-
-	if numShards <= 0 {
-		panic("numShards must be greater than 0")
-	}
-
-	if numShards > capacity {
-		panic("numShards must be less than or equal to capacity")
-	}
-
-	if ttl <= 0 {
-		panic("ttl must be greater than 0")
-	}
-
-	if evictionPercentage < 0 || evictionPercentage > 100 {
-		panic("evictionPercentage must be between 0 and 100")
-	}
 }
 
 // New creates a new Client instance with the specified configuration.
@@ -122,6 +106,7 @@ func New(capacity, numShards int, ttl time.Duration, evictionPercentage int, opt
 	return client
 }
 
+// Size returns the number of entries in the cache.
 func (c *Client) Size() int {
 	var sum int
 	for _, shard := range c.shards {
@@ -145,6 +130,7 @@ func (c *Client) startEvictions() {
 	}()
 }
 
+// getShard returns the shard that should be used for the specified key.
 func (c *Client) getShard(key string) *shard {
 	hasher := fnv.New64a()
 	_, _ = hasher.Write([]byte(key))
@@ -156,6 +142,7 @@ func (c *Client) getShard(key string) *shard {
 	return c.shards[shardIndex]
 }
 
+// reportCacheHits is used to report cache hits and misses to the metrics recorder.
 func (c *Client) reportCacheHits(cacheHit bool) {
 	if c.metricsRecorder == nil {
 		return
@@ -167,11 +154,13 @@ func (c *Client) reportCacheHits(cacheHit bool) {
 	c.metricsRecorder.CacheHit()
 }
 
+// set writes a single value to the cache. Returns true if it triggered an eviction.
 func (c *Client) set(key string, value any, isMissingRecord bool) bool {
 	shard := c.getShard(key)
 	return shard.set(key, value, isMissingRecord)
 }
 
+// get retrieves a value from the cache and performs a type assertion to the desired type.
 func get[T any](c *Client, key string) (value T, exists, ignore, refresh bool) {
 	shard := c.getShard(key)
 	entry, exists, ignore, refresh := shard.get(key)
@@ -195,14 +184,25 @@ func Get[T any](c *Client, key string) (T, bool) {
 	return value, ok
 }
 
-func GetFetch[T any](ctx context.Context, client *Client, key string, fetchFn FetchFn[T]) (T, error) {
+// GetFetch attempts to retrieve the specified key from the cache. If the value
+// is absent, it invokes the "fetchFn" to obtain it, and subsequently stores
+// it. Additionally, when stampede protection is active, GetFetch assesses
+// whether the record requires refreshing and, if so, schedules this task to be
+// executed in the background.
+
+// GetFetch attempts to retrieve the specified key from the cache. If the value
+// is absent, it invokes the "fetchFn" function to obtain it and then stores
+// the result. Additionally, when stampede protection is enabled, GetFetch
+// determines if the record needs refreshing and, if necessary, schedules this
+// task for background execution.
+func GetFetch[T any](ctx context.Context, c *Client, key string, fetchFn FetchFn[T]) (T, error) {
 	// Begin by checking if we have the item in our cache.
-	value, ok, shouldIgnore, shouldRefresh := get[T](client, key)
+	value, ok, shouldIgnore, shouldRefresh := get[T](c, key)
 
 	// We have the item cached and we'll check if it should be refreshed in the background.
 	if shouldRefresh {
 		safeGo(func() {
-			refresh(client, key, fetchFn)
+			refresh(c, key, fetchFn)
 		})
 	}
 
@@ -215,23 +215,28 @@ func GetFetch[T any](ctx context.Context, client *Client, key string, fetchFn Fe
 		response, err := fetchFn(ctx)
 		if err != nil {
 			// In case of an error, we'll only cache the response if the fetchFn returned an ErrMissingRecord.
-			if client.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
-				client.set(key, response, true)
+			if c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
+				c.set(key, response, true)
 			}
 			return response, err
 		}
 
 		// Cache the response
-		client.set(key, response, false)
+		c.set(key, response, false)
 		return response, err
 	}
 
 	return value, nil
 }
 
+// GetFetchBatch attempts to retrieve the specified ids from the cache. If any
+// of the values are absent, it invokes the fetchFn function to obtain them and
+// then stores the result. Additionally, when stampede protection is enabled,
+// GetFetch determines if any of the records needs refreshing and, if
+// necessary, schedules this to be performed in the background.
 func GetFetchBatch[T any](
 	ctx context.Context,
-	client *Client,
+	c *Client,
 	ids []string,
 	keyFn KeyFn,
 	fetchFn BatchFetchFn[T],
@@ -239,9 +244,11 @@ func GetFetchBatch[T any](
 	cachedRecords := make(map[string]T)
 	cacheMisses := make([]string, 0)
 	idsToRefresh := make([]string, 0)
+
+	// Group the IDs into cached records, cache misses, and ids which are due for a refresh.
 	for _, id := range ids {
 		key := keyFn(id)
-		value, exists, shouldIgnore, shouldRefresh := get[T](client, key)
+		value, exists, shouldIgnore, shouldRefresh := get[T](c, key)
 
 		// Check if the record should be refreshed in the background.
 		if shouldRefresh {
@@ -261,15 +268,15 @@ func GetFetchBatch[T any](
 		cachedRecords[id] = value
 	}
 
-	// Refresh records in the background
+	// If any records need to be refreshed, we'll do so in the background.
 	if len(idsToRefresh) > 0 {
-		if client.bufferRefreshes {
+		if c.bufferRefreshes {
 			safeGo(func() {
-				bufferBatchRefresh(client, idsToRefresh, keyFn, fetchFn)
+				bufferBatchRefresh(c, idsToRefresh, keyFn, fetchFn)
 			})
 		} else {
 			safeGo(func() {
-				refreshBatch(client, idsToRefresh, keyFn, fetchFn)
+				refreshBatch(c, idsToRefresh, keyFn, fetchFn)
 			})
 		}
 	}
@@ -282,41 +289,46 @@ func GetFetchBatch[T any](
 	// Fetch the missing records.
 	response, err := fetchFn(ctx, cacheMisses)
 	if err != nil {
-		// We had some records in the cache, but the remaining records couldn't be retrieved. Therefore,
-		// we'll return a ErrOnlyCachedRecords error, and let the caller decide what to do.
+		// We had some records in the cache, but the remaining records couldn't be
+		// retrieved. Therefore, we'll return the cached records along with a
+		// ErrOnlyCachedRecords error, and let the caller decide what to do.
 		if len(cachedRecords) > 0 {
 			return cachedRecords, ErrOnlyCachedRecords
 		}
 		return cachedRecords, err
 	}
 
-	// Check if we should store any missing records with a cooldown.
-	if client.storeMisses && len(response) < len(cacheMisses) {
+	// Check if we should store any of these IDs as a missing record.
+	if c.storeMisses && len(response) < len(cacheMisses) {
 		for _, id := range cacheMisses {
 			if v, ok := response[id]; !ok {
-				client.set(keyFn(id), v, true)
+				c.set(keyFn(id), v, true)
 			}
 		}
 	}
 
-	// Cache the fetched records.
+	// Cache the fetched records, and merge them with the ones we already had.
 	for id, record := range response {
-		client.set(keyFn(id), record, false)
+		c.set(keyFn(id), record, false)
 	}
-
-	// Merge the cached records with the fetched records.
 	maps.Copy(cachedRecords, response)
 
 	return cachedRecords, nil
 }
 
-// Set sets a value in the cache. Returns true if it triggered an eviction.
+// Set writes a single value to the cache. Returns true if it triggered an eviction.
 func Set(c *Client, key string, value any) bool {
 	return c.set(key, value, false)
 }
 
-func SetMany[T any](c *Client, records map[string]T, cacheKeyFn KeyFn) {
+// SetMany writes multiple values to the cache. Returns true if it triggered an eviction.
+func SetMany[T any](c *Client, records map[string]T, cacheKeyFn KeyFn) bool {
+	var triggeredEviction bool
 	for id, value := range records {
-		c.set(cacheKeyFn(id), value, false)
+		evicted := c.set(cacheKeyFn(id), value, false)
+		if evicted {
+			triggeredEviction = true
+		}
 	}
+	return triggeredEviction
 }

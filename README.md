@@ -24,9 +24,11 @@ go get github.com/creativecreature/sturdyc
 # At a glance
 The package exports the following functions:
 - Use [`sturdyc.Set`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Set) to write a record to the cache.
+- Use [`sturdyc.SetMany`](https://pkg.go.dev/github.com/creativecreature/sturdyc#SetMany) to write multiple records to the cache.
 - Use [`sturdyc.Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Get) to get a record from the cache.
 - Use [`sturdyc.GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch) to have the cache fetch and store a record.
 - Use [`sturdyc.GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch) to have the cache fetch and store a batch of records.
+- Use [`sturdyc.Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Size) to get the number of items in the cache.
 
 To utilize these functions, you will first have to set up a client to manage
 your configuration:

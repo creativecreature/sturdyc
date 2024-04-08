@@ -44,10 +44,10 @@ func WithStampedeProtection(
 func WithRefreshBuffering(batchSize int, maxBufferTime time.Duration) Option {
 	return func(c *Client) {
 		c.bufferRefreshes = true
-		c.maxBufferSize = batchSize
+		c.batchSize = batchSize
 		c.bufferTimeout = maxBufferTime
-		c.bufferIdentifierIDs = make(map[string][]string)
-		c.bufferIdentifierChans = make(map[string]chan<- []string)
+		c.bufferPermutationIDs = make(map[string][]string)
+		c.bufferPermutationChan = make(map[string]chan<- []string)
 	}
 }
 
@@ -55,5 +55,28 @@ func WithRelativeTimeKeyFormat(truncation time.Duration) Option {
 	return func(c *Client) {
 		c.useRelativeTimeKeyFormat = true
 		c.keyTruncation = truncation
+	}
+}
+
+// validateArgs is a helper function that panics if the arguments are invalid.
+func validateArgs(capacity, numShards int, ttl time.Duration, evictionPercentage int) {
+	if capacity <= 0 {
+		panic("capacity must be greater than 0")
+	}
+
+	if numShards <= 0 {
+		panic("numShards must be greater than 0")
+	}
+
+	if numShards > capacity {
+		panic("numShards must be less than or equal to capacity")
+	}
+
+	if ttl <= 0 {
+		panic("ttl must be greater than 0")
+	}
+
+	if evictionPercentage < 0 || evictionPercentage > 100 {
+		panic("evictionPercentage must be between 0 and 100")
 	}
 }

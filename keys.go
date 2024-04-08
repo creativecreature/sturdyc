@@ -86,8 +86,7 @@ func (c *Client) handleTime(v reflect.Value) string {
 
 // PermutatedKey is a helper function for creating a cache key from a struct of
 // options. Passing anything but a struct for "permutationStruct" will result
-// in a panic. NOTE: time.Time are truncated on minutes. If you need more
-// precision, you'll have to convert it yourself into a string or epoch number.
+// in a panic.
 func (c *Client) PermutatedKey(prefix string, permutationStruct interface{}) string {
 	var sb strings.Builder
 	sb.WriteString(prefix)
@@ -161,8 +160,6 @@ func (c *Client) BatchKeyFn(prefix string) KeyFn {
 // concatenated with the id in order to make a unique key. Passing anything but
 // a struct for "permutationStruct" will result in a panic. This function is useful
 // when the id isn't enough in itself to uniquely identify a record.
-// NOTE: time.Time are truncated on minutes. If you need more precision, you'll
-// have to convert it yourself into a string or epoch number.
 func (c *Client) PermutatedBatchKeyFn(prefix string, permutationStruct interface{}) KeyFn {
 	return func(id string) string {
 		key := c.PermutatedKey(prefix, permutationStruct)

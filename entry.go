@@ -2,6 +2,7 @@ package sturdyc
 
 import "time"
 
+// entry represents a single cache entry.
 type entry struct {
 	key                 string
 	value               any
