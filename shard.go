@@ -110,8 +110,8 @@ func (s *shard) get(key string) (val any, exists, ignore, refresh bool) {
 			// During the time it takes to switch to a write lock, another goroutine
 			// might have acquired it and moved the refreshAt before we could.
 			s.mu.Lock()
-			shoulStillRefresh := s.clock.Now().After(item.refreshAt)
-			if !shoulStillRefresh {
+			shouldStillRefresh := s.clock.Now().After(item.refreshAt)
+			if !shouldStillRefresh {
 				s.mu.Unlock()
 				return item.value, true, item.isMissingRecord, false
 			}

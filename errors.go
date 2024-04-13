@@ -4,7 +4,7 @@ import "errors"
 
 var (
 	// ErrStoreMissingRecord should be returned from FetchFn to indicate that we
-	// want to store the record with a  cooldown. This only applies to the
+	// want to store the record with a cooldown. This only applies to the
 	// FetchFn, for the BatchFetchFn you should enable the functionality through
 	// options, and simply return a map without the missing record being present.
 	ErrStoreMissingRecord = errors.New("record not found")

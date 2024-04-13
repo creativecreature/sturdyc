@@ -20,7 +20,7 @@ type MetricsRecorder interface {
 	ObserveCacheSize(callback func() int)
 }
 
-// Fetch represents a function that can be used to fetch a single record from a data source.
+// FetchFn Fetch represents a function that can be used to fetch a single record from a data source.
 type FetchFn[T any] func(ctx context.Context) (T, error)
 
 // BatchFetchFn represents a function that can be used to fetch multiple records from a data source.
@@ -199,7 +199,7 @@ func GetFetch[T any](ctx context.Context, c *Client, key string, fetchFn FetchFn
 	// Begin by checking if we have the item in our cache.
 	value, ok, shouldIgnore, shouldRefresh := get[T](c, key)
 
-	// We have the item cached and we'll check if it should be refreshed in the background.
+	// We have the item cached, and we'll check if it should be refreshed in the background.
 	if shouldRefresh {
 		safeGo(func() {
 			refresh(c, key, fetchFn)
@@ -255,7 +255,6 @@ func GetFetchBatch[T any](
 			idsToRefresh = append(idsToRefresh, id)
 		}
 
-		// We'll ignore records that are in cooldown.
 		if shouldIgnore {
 			continue
 		}

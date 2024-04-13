@@ -28,7 +28,7 @@ func bufferBatchRefresh[T any](c *Client, ids []string, keyFn KeyFn, fetchFn Bat
 		overflowingIDs := ids[c.batchSize:]
 		c.batchMutex.Unlock()
 
-		// These ID's are the size we want, so we'll refresh them immediately.
+		// These IDs are the size we want, so we'll refresh them immediately.
 		safeGo(func() {
 			refreshBatch(c, idsToRefresh, keyFn, fetchFn)
 		})
