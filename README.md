@@ -2,7 +2,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/creativecreature/sturdyc.svg)](https://pkg.go.dev/github.com/creativecreature/sturdyc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/creativecreature/sturdyc/blob/master/LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/creativecreature/sturdyc)](https://goreportcard.com/report/github.com/creativecreature/sturdyc)
-![Test](https://github.com/creativecreature/sturdyc/workflows/main.yml/badge.svg?branch=main)
+[![Test](https://github.com/creativecreature/sturdyc/actions/workflows/main.yml/badge.svg)](https://github.com/creativecreature/sturdyc/actions/workflows/main.yml)
 [![codecov](https://codecov.io/gh/creativecreature/sturdyc/graph/badge.svg?token=CYSKW3Z7E6)](https://codecov.io/gh/creativecreature/sturdyc)
 
 `Sturdyc` is a highly concurrent cache that supports non-blocking reads and has
