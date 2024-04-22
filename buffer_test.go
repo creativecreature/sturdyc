@@ -159,7 +159,7 @@ func TestBatchIsRefreshedWhenTheBufferSizeIsReached(t *testing.T) {
 	// to listen on the timer has been launched, but it might not have reached
 	// the line where it creates a ticker yet. Hence, we'll sleep just to make
 	// sure it's attached before moving the clock.
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
 	clock.Add(batchBufferTimeout + time.Second)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 3)

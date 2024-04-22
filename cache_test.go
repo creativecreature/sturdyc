@@ -245,7 +245,7 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 	evictionPercentage := 10
 	clock := sturdyc.NewTestClock(time.Now())
 	minRefreshDelay := time.Millisecond * 500
-	maxRefreshDelay := time.Millisecond * 1000
+	maxRefreshDelay := time.Millisecond * 500
 	refreshRetryInterval := time.Millisecond * 10
 
 	// The cache is going to have a 2 second TTL, and the first refresh should happen within a second.
