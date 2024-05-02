@@ -17,6 +17,19 @@ additional features designed to help you build robust applications, such as:
 - [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
 - [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
 - [**refresh buffering**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-buffering)
+- [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
+
+The package is capable of taking a response from a batchable endpoint, and
+caching each record individually based on the permutations of the options with
+which it was fetched. It can also significantly reduce the traffic to the
+underlying data sources by buffering refreshes for each unique option set.
+
+Records can be configured to refresh either based on time or at a certain rate
+of requests. All refreshes occur in the background, ensuring that users never
+have to wait for a record to be updated, resulting in *very low latency*
+applications.
+
+There are examples for all of these configurations further down in this file!
 
 # Installing
 ```sh
@@ -30,6 +43,8 @@ The package exports the following functions:
 - Use [`sturdyc.Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Get) to get a record from the cache.
 - Use [`sturdyc.GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch) to have the cache fetch and store a record.
 - Use [`sturdyc.GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch) to have the cache fetch and store a batch of records.
+- Use [`sturdyc.Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Passthrough) to have the cache fetch and store a record.
+- Use [`sturdyc.PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#PassthroughBatch) to have the cache fetch and store a batch of records.
 - Use [`sturdyc.Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Size) to get the number of items in the cache.
 
 To utilize these functions, you will first have to set up a client to manage
@@ -567,3 +582,40 @@ go run .
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/buffering)
+
+# Passthrough
+Time-based refreshes work really well for most use cases. However, there are
+scenarios where you might want to allow a certain amount of traffic to hit the
+underlying data source. For example, you might achieve a 99.99% cache hit rate,
+and even though you refresh the data every 1-2 seconds, it still only amounts
+to a handful of requests. This could cause the other system to scale down too
+much
+
+To solve this problem, `sturdyc` provides you with `sturdyc.Passthrough` and
+`sturdyc.PassthroughBatch`. These functions are functionally equivalent to
+`sturdyc.GetFetch` and `sturdyc.GetFetchBatch`, except they allow a certain
+percentage of requests through rather than allowing a request through every x
+milliseconds/seconds/minutes/hours.
+
+The passthroughs will still be performed in the background, which means that
+your application will maintain low latency response times. Moreover, if the
+underlying system goes down, `sturdyc.Passthrough` and
+`sturdyc.PassthroughBatch` will still be able to serve stale data until the
+record's TTL expires.
+
+
+```go
+capacity := 5
+numShards := 2
+ttl := time.Minute
+evictionPercentage := 10
+c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+    // Allow 50% of the requests to pass-through. Default is 100%.
+    sturdyc.WithPassthroughPercentage(50),
+    // Buffer the batchable pass-throughs. Default is false.
+    sturdyc.WithPassthroughBuffering(),
+)
+
+res, err := sturdyc.Passthrough(ctx, c, "id", fetchFn)
+batchRes, batchErr := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), batchFetchFn)
+```

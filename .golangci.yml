@@ -2,11 +2,6 @@ run:
   # Timeout for analysis, e.g. 30s, 5m.
   timeout: 3m
 
-  # Don't lint the vendor directory
-  skip-dirs:
-    - ^vendor$
-    - examples
-
   # Fail if the error was met.
   issues-exit-code: 1
 
@@ -19,11 +14,6 @@ run:
   # (to be honest I don't find this useful but I have such tags)
   build-tags:
     - integration
-
-  # When enabled linter will skip directories: vendor$, third_party$,
-  # testdata$, examples$, Godeps$, builtin$ Skipping `examples` sounds scary
-  # to me but skipping `testdata` sounds ok.
-  skip-dirs-use-default: false
 
   # With the read-only mode linter will fail if go.mod file is outdated.
   modules-download-mode: readonly
@@ -70,7 +60,6 @@ linters:
     - gomodguard # allow and block lists linter for direct Go module dependencies. This is different from depguard where there are different block types for example version constraints and module recommendations
     - goprintffuncname # checks that printf-like functions are named with f at the end
     - gosec # inspects source code for security problems
-    - lll # reports long lines
     - loggercheck # checks key value pairs for common logger libraries (kitlog,klog,logr,zap)
     - makezero # finds slice declarations with non-zero initial length
     - mirror # reports wrong mirror patterns of bytes/strings usage
@@ -102,15 +91,13 @@ linters:
     - usestdlibvars # detects the possibility to use variables/constants from the Go standard library
     - wastedassign # finds wasted assignment statements
     - whitespace # detects leading and trailing whitespace
-    - contextcheck # Check whether the function uses a non-inherited context.
     - misspell # finds commonly misspelled English words in comments
     - prealloc # can be used to find slice declarations that could potentially be preallocated
     - thelper # detects golang test helpers without t.Helper() call and checks the consistency of test helpers
     - containedctx # detects struct contained context.Context field
     - decorder # checks declaration order and count of types, constants, variables and functions
     - dogsled # checks assignments with too many blank identifiers (e.g. x, _, _, _, := f())
-    - exhaustruct # [highly recommend to enable] checks if all structure fields are initialized
-    # - nlreturn # checks for a new line before return and branch statements to increase code clarity
+    - paralleltest #  detects missing usage of t.Parallel() method in your Go test
 
     ## you may want to enable
     #- gci # controls golang package import order and makes it always deterministic
@@ -124,8 +111,11 @@ linters:
     #- varnamelen # [great idea, but too many false positives] checks that the length of a variable's name matches its scope
     #- wrapcheck # checks that errors returned from external packages are wrapped
     #- zerologlint # detects the wrong usage of zerolog that a user forgets to dispatch zerolog.Event
+    # - nlreturn # checks for a new line before return and branch statements to increase code clarity
 
     ## disabled
+    # - lll # reports long lines
+    # - exhaustruct # [highly recommend to enable] checks if all structure fields are initialized
     #- depguard # [replaced by gomodguard] checks if package imports are in a list of acceptable packages
     #- dupword # [useless without config] checks for duplicate words in the source code
     #- errchkjson # [don't see profit + I'm against of omitting errors like in the first example https://github.com/breml/errchkjson] checks types passed to the json encoding functions. Reports unsupported types and optionally reports occasions, where the check for the returned error can be omitted
@@ -137,13 +127,15 @@ linters:
     #- grouper # analyzes expression groups
     #- importas # enforces consistent import aliases
     #- maintidx # measures the maintainability index of each function
-    #- paralleltest # [too many false positives] detects missing usage of t.Parallel() method in your Go test
     #- wsl # [too strict and mostly code is not more readable] whitespace linter forces you to use empty lines
     #- tagliatelle # checks the struct tags
+    #- contextcheck # Check whether the function uses a non-inherited context.
 
 # This file contains only configs which differ from defaults.
 # All possible options can be found here https://github.com/golangci/golangci-lint/blob/master/.golangci.reference.yml
 linters-settings:
+  nestif:
+    min-complexity: 8
   cyclop:
     # The maximal code complexity to report.
     # Default: 10
@@ -258,12 +250,6 @@ linters-settings:
     # Default: []
     disable:
       - fieldalignment # too strict
-    # Settings per analyzer.
-    settings:
-      shadow:
-        # Whether to be strict about shadowing; can be noisy.
-        # Default: false
-        strict: true
 
   nakedret:
     # Make an issue if func has more lines of code than this setting, and it has naked returns.
@@ -298,6 +284,15 @@ issues:
   # Set to 0 to disable.
   # Default: 3
   max-same-issues: 50
+
+  # Don't lint the vendor or example directories.
+  exclude-dirs:
+    - ^vendor$
+    - examples
+
+  # When enabled, the following directories: are going to be skipped: vendor$,
+  # third_party$, testdata$, examples$, Godeps$, builtin$.
+  exclude-dirs-use-default: false
 
   exclude-rules:
     - source: "(noinspection|TODO)"
