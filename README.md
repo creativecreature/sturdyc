@@ -18,6 +18,7 @@ additional features designed to help you build robust applications, such as:
 - [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
 - [**refresh buffering**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-buffering)
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
+- [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
 
 The package is capable of taking a response from a batchable endpoint, and
 caching each record individually based on the permutations of the options with
@@ -618,4 +619,42 @@ c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
 
 res, err := sturdyc.Passthrough(ctx, c, "id", fetchFn)
 batchRes, batchErr := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), batchFetchFn)
+```
+
+# Custom metrics
+The cache can be configured to report custom metrics for:
+- Size of the cache
+- Cache hits
+- Cache misses
+- Evictions
+- Forced evictions
+- The number of entries evicted
+- Shard distribution
+- The size of the refresh buckets
+
+All you have to do is implement the `MetricsRecorder` interface:
+
+```go
+type MetricsRecorder interface {
+	CacheHit()
+	CacheMiss()
+	Eviction()
+	ForcedEviction()
+	EntriesEvicted(int)
+	ShardIndex(int)
+	CacheBatchRefreshSize(size int)
+	ObserveCacheSize(callback func() int)
+}
+```
+
+and pass it as an option when you create the client:
+
+```go
+cache := sturdyc.New(
+    cacheSize,
+    shardSize,
+    cacheTTL,
+    evictWhenFullPercentage,
+    sturdyc.WithMetrics(metricsRecorder),
+)
 ```
