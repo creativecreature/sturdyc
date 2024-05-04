@@ -19,6 +19,7 @@ additional features designed to help you build robust applications, such as:
 - [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
 - [**refresh buffering**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-buffering)
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
+- [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
 
 The package is capable of taking a response from a batchable endpoint, and
 caching each record individually based on the permutations of the options with
@@ -620,3 +621,51 @@ c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
 res, err := sturdyc.Passthrough(ctx, c, "id", fetchFn)
 batchRes, batchErr := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), batchFetchFn)
 ```
+
+# Custom metrics
+The cache can be configured to report custom metrics for:
+- Size of the cache
+- Cache hits
+- Cache misses
+- Evictions
+- Forced evictions
+- The number of entries evicted
+- Shard distribution
+- The size of the refresh buckets
+
+All you have to do is implement the `MetricsRecorder` interface:
+
+```go
+type MetricsRecorder interface {
+	CacheHit()
+	CacheMiss()
+	Eviction()
+	ForcedEviction()
+	EntriesEvicted(int)
+	ShardIndex(int)
+	CacheBatchRefreshSize(size int)
+	ObserveCacheSize(callback func() int)
+}
+```
+
+and pass it as an option when you create the client:
+
+```go
+cache := sturdyc.New(
+    cacheSize,
+    shardSize,
+    cacheTTL,
+    evictWhenFullPercentage,
+    sturdyc.WithMetrics(metricsRecorder),
+)
+```
+
+Below are a few images where these metrics have been visualized in Grafana:
+
+<img width="939" alt="Screenshot 2024-05-04 at 12 36 43" src="https://github.com/creativecreature/sturdyc/assets/12787673/1f630aed-2322-4d3a-9510-d582e0294488">
+
+<img width="942" alt="Screenshot 2024-05-04 at 12 37 39" src="https://github.com/creativecreature/sturdyc/assets/12787673/25187529-28fb-4c4e-8fe9-9fb48772e0c0">
+
+<img width="941" alt="Screenshot 2024-05-04 at 12 38 04" src="https://github.com/creativecreature/sturdyc/assets/12787673/b1359867-f1ef-4a09-8c75-d7d2360726f1">
+
+<img width="940" alt="Screenshot 2024-05-04 at 12 38 20" src="https://github.com/creativecreature/sturdyc/assets/12787673/de7f00ee-b14d-443b-b69e-91e19665c252">
