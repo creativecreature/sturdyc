@@ -26,11 +26,21 @@ func refreshBatch[T any](c *Client, ids []string, keyFn KeyFn, fetchFn BatchFetc
 		return
 	}
 
-	if c.storeMisses && len(response) < len(ids) {
-		for _, id := range ids {
-			if v, ok := response[id]; !ok {
-				c.set(keyFn(id), v, true)
-			}
+	// Check if any of the records have been deleted at the data source.
+	for _, id := range ids {
+		_, okCache := c.get(keyFn(id))
+		v, okResponse := response[id]
+
+		if okResponse {
+			continue
+		}
+
+		if !c.storeMisses && !okResponse && okCache {
+			c.Delete(keyFn(id))
+		}
+
+		if c.storeMisses && !okResponse {
+			c.set(keyFn(id), v, true)
 		}
 	}
 

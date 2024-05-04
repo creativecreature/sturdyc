@@ -429,7 +429,6 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertRequestedRecords(t, ids)
 	fetchObserver.AssertFetchCount(t, 1)
-	fetchObserver.Clear()
 
 	// Set the clock to be just before the min cache refresh threshold.
 	// This should not be enough to make the cache call our fetchFn.

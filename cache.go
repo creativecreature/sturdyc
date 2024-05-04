@@ -166,3 +166,10 @@ func (c *Client) set(key string, value any, isMissingRecord bool) bool {
 	shard := c.getShard(key)
 	return shard.set(key, value, isMissingRecord)
 }
+
+// get retrieves a single value from the cache.
+func (c *Client) get(key string) (any, bool) {
+	shard := c.getShard(key)
+	value, ok, _, _ := shard.get(key)
+	return value, ok
+}
