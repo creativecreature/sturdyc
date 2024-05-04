@@ -29,7 +29,7 @@ of requests. All refreshes occur in the background, ensuring that users never
 have to wait for a record to be updated, resulting in *very low latency*
 applications.
 
-There are examples for all of these configurations further down in this file!
+There are examples for all of these configurations further down this file!
 
 # Installing
 ```sh
