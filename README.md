@@ -7,8 +7,9 @@
 
 `Sturdyc` is a highly concurrent cache that supports non-blocking reads and has
 a configurable number of shards to reduce lock contention during write
-operations. Evictions are performed per shard at O(N) time complexity using
-[quickselect](https://en.wikipedia.org/wiki/Quickselect).
+operations. The [xxhash](https://github.com/cespare/xxhash) algorithm is used
+to distribute the keys. Evictions are performed per shard at O(N) time
+complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
 It has all the functionality you would expect from a caching library, along with
 additional features designed to help you build robust applications, such as:

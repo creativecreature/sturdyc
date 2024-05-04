@@ -48,9 +48,9 @@ func PassthroughBatch[T any](ctx context.Context, c *Client, ids []string, keyFn
 		safeGo(func() {
 			if c.passthroughBuffering {
 				bufferBatchRefresh(c, ids, keyFn, fetchFn)
-			} else {
-				refreshBatch(c, ids, keyFn, fetchFn)
+				return
 			}
+			refreshBatch(c, ids, keyFn, fetchFn)
 		})
 	}
 

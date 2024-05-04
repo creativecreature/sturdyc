@@ -2,9 +2,10 @@ package sturdyc
 
 import (
 	"context"
-	"hash/fnv"
 	"sync"
 	"time"
+
+	"github.com/cespare/xxhash"
 )
 
 type MetricsRecorder interface {
@@ -140,9 +141,7 @@ func (c *Client) startEvictions() {
 
 // getShard returns the shard that should be used for the specified key.
 func (c *Client) getShard(key string) *shard {
-	hasher := fnv.New64a()
-	_, _ = hasher.Write([]byte(key))
-	hash := hasher.Sum64()
+	hash := xxhash.Sum64String(key)
 	shardIndex := hash % uint64(len(c.shards))
 	if c.metricsRecorder != nil {
 		c.metricsRecorder.ShardIndex(int(shardIndex))

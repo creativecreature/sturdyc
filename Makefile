@@ -20,6 +20,12 @@ test:
 	@echo 'Running tests...'
 	go test -race -vet=off -timeout 30s ./...
 
+## bench: run all benchmarks
+.PHONY: bench
+bench:
+	@echo 'Running benchmarks...'
+	go test -bench=.
+
 ## audit: tidy and vendor dependencies and format, vet and test all code
 .PHONY: audit
 audit: vendor

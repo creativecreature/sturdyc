@@ -96,9 +96,9 @@ func GetFetchBatch[T any](ctx context.Context, c *Client, ids []string, keyFn Ke
 		safeGo(func() {
 			if c.bufferRefreshes {
 				bufferBatchRefresh(c, idsToRefresh, keyFn, fetchFn)
-			} else {
-				refreshBatch(c, idsToRefresh, keyFn, fetchFn)
+				return
 			}
+			refreshBatch(c, idsToRefresh, keyFn, fetchFn)
 		})
 	}
 
