@@ -9,6 +9,8 @@ import (
 )
 
 func TestTimeBasedKeys(t *testing.T) {
+	t.Parallel()
+
 	timeValue := time.Now()
 	regularTimeClient := sturdyc.New(100, 1, time.Hour, 5)
 

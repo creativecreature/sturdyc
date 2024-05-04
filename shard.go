@@ -8,18 +8,17 @@ import (
 )
 
 type shard struct {
+	sync.RWMutex
 	capacity           int
 	ttl                time.Duration
-	mu                 sync.RWMutex
 	entries            map[string]*entry
 	clock              Clock
 	metricsRecorder    MetricsRecorder
 	evictionPercentage int
-
-	refreshesEnabled bool
-	minRefreshTime   time.Duration
-	maxRefreshTime   time.Duration
-	retryBaseDelay   time.Duration
+	refreshesEnabled   bool
+	minRefreshTime     time.Duration
+	maxRefreshTime     time.Duration
+	retryBaseDelay     time.Duration
 }
 
 func newShard(
@@ -36,7 +35,6 @@ func newShard(
 	return &shard{
 		capacity:           capacity,
 		ttl:                ttl,
-		mu:                 sync.RWMutex{},
 		entries:            make(map[string]*entry),
 		evictionPercentage: evictionPercentage,
 		clock:              clock,
@@ -49,15 +47,15 @@ func newShard(
 }
 
 func (s *shard) size() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.RLock()
+	defer s.RUnlock()
 	return len(s.entries)
 }
 
 // evictExpired evicts all the expired entries in the shard.
 func (s *shard) evictExpired() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Lock()
+	defer s.Unlock()
 
 	var entriesEvicted int
 	for _, e := range s.entries {
@@ -84,7 +82,7 @@ func (s *shard) forceEvict() {
 	}
 
 	cutoff := FindCutoff(expirationTimes, float64(s.evictionPercentage)/100)
-	var entriesEvicted int
+	entriesEvicted := 0
 	for key, e := range s.entries {
 		if e.expiresAt.Before(cutoff) {
 			delete(s.entries, key)
@@ -97,49 +95,56 @@ func (s *shard) forceEvict() {
 }
 
 func (s *shard) get(key string) (val any, exists, ignore, refresh bool) {
-	s.mu.RLock()
-	if item, ok := s.entries[key]; ok {
-		if s.clock.Now().After(item.expiresAt) {
-			s.mu.RUnlock()
-			return nil, false, false, false
+	s.RLock()
+	item, ok := s.entries[key]
+	if !ok {
+		s.RUnlock()
+		return nil, false, false, false
+	}
+
+	if s.clock.Now().After(item.expiresAt) {
+		s.RUnlock()
+		return nil, false, false, false
+	}
+
+	shouldRefresh := s.refreshesEnabled && s.clock.Now().After(item.refreshAt)
+	if shouldRefresh {
+		// Release the read lock, and switch to a write lock.
+		s.RUnlock()
+		s.Lock()
+
+		// However, during the time it takes to switch locks, another goroutine
+		// might have acquired it and moved the refreshAt. Therefore, we'll have to
+		// check if this operation should still be performed.
+		if !s.clock.Now().After(item.refreshAt) {
+			s.Unlock()
+			return item.value, true, item.isMissingRecord, false
 		}
 
-		shouldRefresh := s.refreshesEnabled && s.clock.Now().After(item.refreshAt)
-		s.mu.RUnlock()
-		if shouldRefresh {
-			// During the time it takes to switch to a write lock, another goroutine
-			// might have acquired it and moved the refreshAt before we could.
-			s.mu.Lock()
-			shouldStillRefresh := s.clock.Now().After(item.refreshAt)
-			if !shouldStillRefresh {
-				s.mu.Unlock()
-				return item.value, true, item.isMissingRecord, false
-			}
+		// Update the "refreshAt" so no other goroutines attempts to refresh the same entry.
+		nextRefresh := math.Pow(2, float64(item.numOfRefreshRetries)) * float64(s.retryBaseDelay)
+		item.refreshAt = s.clock.Now().Add(time.Duration(nextRefresh))
+		item.numOfRefreshRetries++
 
-			// Update the "refreshAt" so no other goroutines attempts to refresh the same entry.
-			nextRefresh := math.Pow(2, float64(item.numOfRefreshRetries)) * float64(s.retryBaseDelay)
-			item.refreshAt = s.clock.Now().Add(time.Duration(nextRefresh))
-			item.numOfRefreshRetries++
-			s.mu.Unlock()
-		}
+		s.Unlock()
 		return item.value, true, item.isMissingRecord, shouldRefresh
 	}
-	s.mu.RUnlock()
-	return nil, false, false, false
+
+	s.RUnlock()
+	return item.value, true, item.isMissingRecord, false
 }
 
 // set sets a key-value pair in the shard. Returns true if it triggered an eviction.
 func (s *shard) set(key string, value any, isMissingRecord bool) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	now := s.clock.Now()
+	s.Lock()
+	defer s.Unlock()
 
 	// Check we need to perform an eviction first.
 	evict := len(s.entries) >= s.capacity
 
-	// If the cache is configured to not evict any entries, return early.
-	if s.evictionPercentage < 1 {
+	// If the cache is configured to not evict any entries,
+	// and we're att full capacity, we'll return early.
+	if s.evictionPercentage < 1 && evict {
 		return false
 	}
 
@@ -147,8 +152,14 @@ func (s *shard) set(key string, value any, isMissingRecord bool) bool {
 		s.forceEvict()
 	}
 
-	//nolint: exhaustruct // we are going to set the remaining fields based on config.
-	newEntry := &entry{key: key, value: value, expiresAt: now.Add(s.ttl), isMissingRecord: isMissingRecord}
+	now := s.clock.Now()
+	newEntry := &entry{
+		key:             key,
+		value:           value,
+		expiresAt:       now.Add(s.ttl),
+		isMissingRecord: isMissingRecord,
+	}
+
 	if s.refreshesEnabled {
 		// If there is a difference between the min- and maxRefreshTime we'll use that to
 		// set a random padding so that the refreshes get spread out evenly over time.
@@ -159,7 +170,13 @@ func (s *shard) set(key string, value any, isMissingRecord bool) bool {
 		newEntry.refreshAt = now.Add(s.minRefreshTime + padding)
 		newEntry.numOfRefreshRetries = 0
 	}
-	s.entries[key] = newEntry
 
+	s.entries[key] = newEntry
 	return evict
+}
+
+func (s *shard) delete(key string) {
+	s.Lock()
+	defer s.Unlock()
+	delete(s.entries, key)
 }

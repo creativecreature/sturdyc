@@ -26,6 +26,11 @@ func WithEvictionInterval(interval time.Duration) Option {
 	}
 }
 
+// WithStampedeProtection makes the cache shield the underlying data sources from
+// cache stampedes. Cache stampedes occur when many requests for a particular piece
+// of data (which has just expired or been evicted from the cache) come in at once.
+// This can cause all requests to fetch the data concurrently, which may result in
+// a significant burst of outgoing requests to the underlying data source.
 func WithStampedeProtection(
 	minRefreshTime,
 	maxRefreshTime,
@@ -41,6 +46,10 @@ func WithStampedeProtection(
 	}
 }
 
+// WithRefreshBuffering will make the cache refresh data from batchable
+// endpoints more efficiently. It is going to create a buffer for each cache
+// key permutation, and gather IDs until the "batchSize" is reached, or the
+// "maxBufferTime" has passed.
 func WithRefreshBuffering(batchSize int, maxBufferTime time.Duration) Option {
 	return func(c *Client) {
 		c.bufferRefreshes = true
@@ -51,6 +60,25 @@ func WithRefreshBuffering(batchSize int, maxBufferTime time.Duration) Option {
 	}
 }
 
+// WithPassthroughPercentage controls the rate at which requests are allowed through
+// by the passthrough caching functions. For example, setting the percentage parameter
+// to 50 would allow half of the requests to through.
+func WithPassthroughPercentage(percentage int) Option {
+	return func(c *Client) {
+		c.passthroughPercentage = percentage
+	}
+}
+
+// WithPassthroughBuffering allows you to decide if the batchable passthrough
+// requests should be buffered and batched more efficiently.
+func WithPassthroughBuffering() Option {
+	return func(c *Client) {
+		c.passthroughBuffering = true
+	}
+}
+
+// WithRelativeTimeKeyFormat allows you to control the truncation of time.Time
+// values that are being passed in to the cache key functions.
 func WithRelativeTimeKeyFormat(truncation time.Duration) Option {
 	return func(c *Client) {
 		c.useRelativeTimeKeyFormat = true
@@ -66,10 +94,6 @@ func validateArgs(capacity, numShards int, ttl time.Duration, evictionPercentage
 
 	if numShards <= 0 {
 		panic("numShards must be greater than 0")
-	}
-
-	if numShards > capacity {
-		panic("numShards must be less than or equal to capacity")
 	}
 
 	if ttl <= 0 {

@@ -73,8 +73,8 @@ func BenchmarkGetConcurrent(b *testing.B) {
 }
 
 func BenchmarkSetConcurrent(b *testing.B) {
-	capacity := 1_000_000
-	numShards := 1000
+	capacity := 10_000_000
+	numShards := 10_000
 	ttl := time.Hour
 	evictionPercentage := 5
 	client := sturdyc.New(capacity, numShards, ttl, evictionPercentage)

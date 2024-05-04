@@ -223,3 +223,13 @@ func (f *FetchObserver) AssertMaxFetchCount(t *testing.T, count int) {
 		t.Errorf("expected fetch count to be at most %d, got %d", count, f.fetchCount)
 	}
 }
+
+func (f *FetchObserver) AssertMinFetchCount(t *testing.T, count int) {
+	t.Helper()
+	f.Lock()
+	defer f.Unlock()
+
+	if f.fetchCount < count {
+		t.Errorf("expected fetch count to be at minimum %d, got %d", count, f.fetchCount)
+	}
+}
