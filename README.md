@@ -6,10 +6,10 @@
 [![codecov](https://codecov.io/gh/creativecreature/sturdyc/graph/badge.svg?token=CYSKW3Z7E6)](https://codecov.io/gh/creativecreature/sturdyc)
 
 `Sturdyc` is a highly concurrent cache that supports non-blocking reads and has
-a configurable number of shards to reduce lock contention during write
-operations. The [xxhash](https://github.com/cespare/xxhash) algorithm is used
-to distribute the keys. Evictions are performed per shard at O(N) time
-complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
+a configurable number of shards that makes it possible to achieve parallel
+writes. The [xxhash](https://github.com/cespare/xxhash) algorithm is used for
+efficient key distribution. Evictions are performed per shard based on recency at
+O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
 It has all the functionality you would expect from a caching library, along with
 additional features designed to help you build robust applications, such as:
@@ -21,10 +21,12 @@ additional features designed to help you build robust applications, such as:
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
 
-The package is capable of taking a response from a batchable endpoint, and
-caching each record individually based on the permutations of the options with
-which it was fetched. It can also significantly reduce the traffic to the
-underlying data sources by buffering refreshes for each unique option set.
+The package has great support for batchable data sources as it takes the
+response apart, and then caches each record individually based on the
+permutations of the options with which it was fetched. It can also
+significantly reduce the traffic to the underlying data sources by creating a
+buffer for each unique option set, and then delaying the refreshes until it has
+gathered enough IDs
 
 Records can be configured to refresh either based on time or at a certain rate
 of requests. All refreshes occur in the background, ensuring that users never
@@ -84,10 +86,11 @@ func main() {
 Next, we'll look at some of the more *advanced features*.
 
 # Stampede protection
-Cache stampedes occur when many requests for a particular piece of data (which
-has just expired or been evicted from the cache) come in at once. This can
-cause all requests to fetch the data concurrently, subsequently causing a
-significant load on the underlying data source.
+Cache stampedes (also known as thundering herd) occur when many requests for a
+particular piece of data (which has just expired or been evicted from the
+cache) come in at once. This can cause all requests to fetch the data
+concurrently, subsequently causing a significant load on the underlying data
+source.
 
 To prevent this, we can enable **stampede protection**:
 
