@@ -12,22 +12,22 @@ func TestTimeBasedKeys(t *testing.T) {
 	t.Parallel()
 
 	timeValue := time.Now()
-	regularTimeClient := sturdyc.New(100, 1, time.Hour, 5)
+	regularTimeClient := sturdyc.New[any](100, 1, time.Hour, 5)
 
 	clientSecondClock := sturdyc.NewTestClock(time.Now().Truncate(time.Second))
-	relativeTimeClientSecond := sturdyc.New(100, 1, time.Hour, 5,
+	relativeTimeClientSecond := sturdyc.New[any](100, 1, time.Hour, 5,
 		sturdyc.WithRelativeTimeKeyFormat(time.Second),
 		sturdyc.WithClock(clientSecondClock),
 	)
 
 	clientMinuteClock := sturdyc.NewTestClock(time.Now().Truncate(time.Minute))
-	relativeTimeClientMinute := sturdyc.New(100, 1, time.Hour, 5,
+	relativeTimeClientMinute := sturdyc.New[any](100, 1, time.Hour, 5,
 		sturdyc.WithRelativeTimeKeyFormat(time.Minute),
 		sturdyc.WithClock(clientMinuteClock),
 	)
 
 	clientHourClock := sturdyc.NewTestClock(time.Now().Truncate(time.Hour))
-	relativeTimeClientHour := sturdyc.New(100, 1, time.Hour, 5,
+	relativeTimeClientHour := sturdyc.New[any](100, 1, time.Hour, 5,
 		sturdyc.WithRelativeTimeKeyFormat(time.Hour),
 		sturdyc.WithClock(clientHourClock),
 	)
@@ -73,7 +73,7 @@ func TestTimeBasedKeys(t *testing.T) {
 func TestPermutatedRelativeTimeKeys(t *testing.T) {
 	t.Parallel()
 
-	client := sturdyc.New(100, 1, time.Hour, 5, sturdyc.WithRelativeTimeKeyFormat(time.Minute))
+	client := sturdyc.New[any](100, 1, time.Hour, 5, sturdyc.WithRelativeTimeKeyFormat(time.Minute))
 	prefix := "cache-key"
 	stringValue := "string"
 	intValue := 1
@@ -143,7 +143,7 @@ func TestPermutatedRelativeTimeKeys(t *testing.T) {
 func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
 	t.Parallel()
 
-	client := sturdyc.New(100, 1, time.Hour, 5)
+	client := sturdyc.New[any](100, 1, time.Hour, 5)
 	type queryParams struct {
 		StringValues []string
 		IntValues    []int
@@ -164,7 +164,7 @@ func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
 func TestPermutatedBatchKeyFn(t *testing.T) {
 	t.Parallel()
 
-	client := sturdyc.New(100, 1, time.Hour, 5)
+	client := sturdyc.New[any](100, 1, time.Hour, 5)
 	type queryParams struct {
 		IncludeUpcoming bool
 		// Note that limit isn't exported (lowercase), hence it should be omitted from the key.

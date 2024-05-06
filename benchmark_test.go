@@ -14,17 +14,17 @@ type benchmarkMetric[T any] struct {
 	evictions int
 }
 
-func (b *benchmarkMetric[T]) recordGet(client *sturdyc.Client, key string) {
+func (b *benchmarkMetric[T]) recordGet(client *sturdyc.Cache[T], key string) {
 	b.getOps++
-	_, ok := sturdyc.Get[T](client, key)
+	_, ok := client.Get(key)
 	if ok {
 		b.hits++
 	}
 }
 
-func (b *benchmarkMetric[T]) recordSet(client *sturdyc.Client, key string, value T) {
+func (b *benchmarkMetric[T]) recordSet(client *sturdyc.Cache[T], key string, value T) {
 	b.setOps++
-	evict := sturdyc.Set(client, key, value)
+	evict := client.Set(key, value)
 	if evict {
 		b.evictions++
 	}
@@ -56,8 +56,8 @@ func BenchmarkGetConcurrent(b *testing.B) {
 	numShards := 100
 	ttl := time.Hour
 	evictionPercentage := 5
-	client := sturdyc.New(capacity, numShards, ttl, evictionPercentage)
-	sturdyc.Set(client, cacheKey, "value")
+	client := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
+	client.Set(cacheKey, "value")
 
 	metrics := make(benchmarkMetrics[string], 0)
 	b.ResetTimer()
@@ -77,7 +77,7 @@ func BenchmarkSetConcurrent(b *testing.B) {
 	numShards := 10_000
 	ttl := time.Hour
 	evictionPercentage := 5
-	client := sturdyc.New(capacity, numShards, ttl, evictionPercentage)
+	client := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
 
 	metrics := make(benchmarkMetrics[string], 0)
 	b.ResetTimer()

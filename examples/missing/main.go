@@ -11,10 +11,10 @@ import (
 
 type API struct {
 	count       int
-	cacheClient *sturdyc.Client
+	cacheClient *sturdyc.Cache
 }
 
-func NewAPI(c *sturdyc.Client) *API {
+func NewAPI(c *sturdyc.Cache) *API {
 	return &API{
 		count:       0,
 		cacheClient: c,

@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-func refresh[T any](c *Client, key string, fetchFn FetchFn[T]) {
+func (c *Cache[T]) refresh(key string, fetchFn FetchFn[T]) {
 	response, err := fetchFn(context.Background())
 	if err != nil {
 		if c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
@@ -16,7 +16,7 @@ func refresh[T any](c *Client, key string, fetchFn FetchFn[T]) {
 	c.set(key, response, false)
 }
 
-func refreshBatch[T any](c *Client, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
+func (c *Cache[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
 	if c.metricsRecorder != nil {
 		c.metricsRecorder.CacheBatchRefreshSize(len(ids))
 	}
@@ -28,7 +28,7 @@ func refreshBatch[T any](c *Client, ids []string, keyFn KeyFn, fetchFn BatchFetc
 
 	// Check if any of the records have been deleted at the data source.
 	for _, id := range ids {
-		_, okCache := c.get(keyFn(id))
+		_, okCache, _, _ := c.get(keyFn(id))
 		v, okResponse := response[id]
 
 		if okResponse {

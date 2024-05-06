@@ -15,10 +15,10 @@ type OrderOptions struct {
 }
 
 type OrderAPI struct {
-	cacheClient *sturdyc.Client
+	cacheClient *sturdyc.Cache
 }
 
-func NewOrderAPI(client *sturdyc.Client) *OrderAPI {
+func NewOrderAPI(client *sturdyc.Cache) *OrderAPI {
 	return &OrderAPI{
 		cacheClient: client,
 	}

@@ -31,13 +31,10 @@ type BatchResponse[T any] map[string]T
 // operation returns. It is used to create unique cache keys.
 type KeyFn func(id string) string
 
-// Client holds the cache configuration.
-type Client struct {
-	ttl              time.Duration
-	shards           []*shard
-	nextShard        int
-	evictionInterval time.Duration
+// Config represents the configuration that can be applied to a Cache instance.
+type Config struct {
 	clock            Clock
+	evictionInterval time.Duration
 	metricsRecorder  MetricsRecorder
 
 	refreshesEnabled bool
@@ -58,6 +55,15 @@ type Client struct {
 
 	useRelativeTimeKeyFormat bool
 	keyTruncation            time.Duration
+	getSize                  func() int
+}
+
+// Cache represents a cache client that can be used to store and retrieve data.
+type Cache[T any] struct {
+	*Config
+	ttl       time.Duration
+	shards    []*shard[T]
+	nextShard int
 }
 
 // New creates a new Client instance with the specified configuration.
@@ -67,38 +73,29 @@ type Client struct {
 // `ttl` Sets the time to live for each entry in the cache. Has to be greater than 0.
 // `evictionPercentage` Percentage of items to evict when the cache exceeds its capacity.
 // `opts` allows for additional configurations to be applied to the cache client.
-func New(capacity, numShards int, ttl time.Duration, evictionPercentage int, opts ...Option) *Client {
+func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage int, opts ...Option) *Cache[T] {
 	validateArgs(capacity, numShards, ttl, evictionPercentage)
 
-	// Create a new client, and apply the options.
-	//nolint: exhaustruct // The options are going to set the remaining fields.
-	client := &Client{
-		ttl:                   ttl,
+	client := &Cache[T]{ttl: ttl}
+
+	// Create a default configuration.
+	cfg := &Config{
 		clock:                 NewClock(),
-		evictionInterval:      ttl / time.Duration(numShards),
 		passthroughPercentage: 100,
+		evictionInterval:      ttl / time.Duration(numShards),
+		getSize:               client.Size,
 	}
 
+	client.Config = cfg
 	for _, opt := range opts {
-		opt(client)
+		opt(cfg)
 	}
 
-	// We create the shards after we've applied the options to ensure that the correct values are used.
+	// We create the shards after we've applied the options to ensure that the correct config is used.
 	shardSize := capacity / numShards
-	shards := make([]*shard, numShards)
+	shards := make([]*shard[T], numShards)
 	for i := 0; i < numShards; i++ {
-		shard := newShard(
-			shardSize,
-			ttl,
-			evictionPercentage,
-			client.clock,
-			client.metricsRecorder,
-			client.refreshesEnabled,
-			client.minRefreshTime,
-			client.maxRefreshTime,
-			client.retryBaseDelay,
-		)
-		shards[i] = shard
+		shards[i] = newShard[T](shardSize, ttl, evictionPercentage, cfg)
 	}
 	client.shards = shards
 	client.nextShard = 0
@@ -110,7 +107,7 @@ func New(capacity, numShards int, ttl time.Duration, evictionPercentage int, opt
 }
 
 // Size returns the number of entries in the cache.
-func (c *Client) Size() int {
+func (c *Cache[T]) Size() int {
 	var sum int
 	for _, shard := range c.shards {
 		sum += shard.size()
@@ -119,13 +116,13 @@ func (c *Client) Size() int {
 }
 
 // Delete removes a single entry from the cache.
-func (c *Client) Delete(key string) {
+func (c *Cache[T]) Delete(key string) {
 	shard := c.getShard(key)
 	shard.delete(key)
 }
 
 // startEvictions is going to be running in a separate goroutine that we're going to prevent from ever exiting.
-func (c *Client) startEvictions() {
+func (c *Cache[T]) startEvictions() {
 	go func() {
 		ticker, stop := c.clock.NewTicker(c.evictionInterval)
 		defer stop()
@@ -140,7 +137,7 @@ func (c *Client) startEvictions() {
 }
 
 // getShard returns the shard that should be used for the specified key.
-func (c *Client) getShard(key string) *shard {
+func (c *Cache[T]) getShard(key string) *shard[T] {
 	hash := xxhash.Sum64String(key)
 	shardIndex := hash % uint64(len(c.shards))
 	if c.metricsRecorder != nil {
@@ -150,7 +147,7 @@ func (c *Client) getShard(key string) *shard {
 }
 
 // reportCacheHits is used to report cache hits and misses to the metrics recorder.
-func (c *Client) reportCacheHits(cacheHit bool) {
+func (c *Cache[T]) reportCacheHits(cacheHit bool) {
 	if c.metricsRecorder == nil {
 		return
 	}
@@ -162,14 +159,7 @@ func (c *Client) reportCacheHits(cacheHit bool) {
 }
 
 // set writes a single value to the cache. Returns true if it triggered an eviction.
-func (c *Client) set(key string, value any, isMissingRecord bool) bool {
+func (c *Cache[T]) set(key string, value T, isMissingRecord bool) bool {
 	shard := c.getShard(key)
 	return shard.set(key, value, isMissingRecord)
-}
-
-// get retrieves a single value from the cache.
-func (c *Client) get(key string) (any, bool) {
-	shard := c.getShard(key)
-	value, ok, _, _ := shard.get(key)
-	return value, ok
 }

@@ -18,7 +18,7 @@ func TestGetFetch(t *testing.T) {
 	numShards := 2
 	ttl := time.Minute
 	evictionPercentage := 10
-	c := sturdyc.New(capacity, numShards, ttl, evictionPercentage)
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
 
 	id := "1"
 	fetchObserver := NewFetchObserver(1)
@@ -62,7 +62,7 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 	refreshRetryInterval := time.Millisecond * 10
 
 	// The cache is going to have a 2 second TTL, and the first refresh should happen within a second.
-	client := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	client := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithClock(clock),
 	)
@@ -111,7 +111,7 @@ func TestGetFetchRefreshRetries(t *testing.T) {
 	retryInterval := time.Millisecond * 10
 	clock := sturdyc.NewTestClock(time.Now())
 
-	c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryInterval, true),
 		sturdyc.WithClock(clock),
 	)
@@ -163,7 +163,7 @@ func TestGetFetchMissingRecord(t *testing.T) {
 	maxRefreshDelay := time.Second * 2
 	retryInterval := time.Millisecond * 10
 	clock := sturdyc.NewTestClock(time.Now())
-	c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithClock(clock),
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryInterval, true),
 	)
@@ -203,7 +203,7 @@ func TestGetFetchBatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	c := sturdyc.New(5, 1, time.Minute, 30)
+	c := sturdyc.New[string](5, 1, time.Minute, 30)
 	fetchObserver := NewFetchObserver(1)
 
 	firstBatchOfIDs := []string{"1", "2", "3"}
@@ -260,7 +260,7 @@ func TestBatchGetFetchNilMapMissingRecords(t *testing.T) {
 	maxRefreshDelay := time.Minute * 2
 	retryInterval := time.Second
 	clock := sturdyc.NewTestClock(time.Now())
-	c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryInterval, true),
 		sturdyc.WithClock(clock),
 	)
@@ -306,7 +306,7 @@ func TestGetFetchBatchRetries(t *testing.T) {
 	maxRefreshDelay := time.Hour * 2
 	retryInterval := time.Second
 	clock := sturdyc.NewTestClock(time.Now())
-	c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryInterval, true),
 		sturdyc.WithClock(clock),
 	)
@@ -361,7 +361,7 @@ func TestBatchGetFetchOnlyCachedRecordsErr(t *testing.T) {
 	ttl := time.Minute
 	evictionPercentage := 10
 	clock := sturdyc.NewTestClock(time.Now())
-	c := sturdyc.New(capacity, numShards, ttl, evictionPercentage, sturdyc.WithClock(clock))
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage, sturdyc.WithClock(clock))
 	fetchObserver := NewFetchObserver(1)
 
 	// We'll start by fetching a couple of ids without any errors to fill the sturdyc.
@@ -412,7 +412,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	minRefreshDelay := time.Millisecond * 500
 	maxRefreshDelay := time.Millisecond * 1000
 	refreshRetryInterval := time.Millisecond * 10
-	client := sturdyc.New(capacity, shards, ttl, evictionPercentage,
+	client := sturdyc.New[string](capacity, shards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithClock(clock),
 	)
