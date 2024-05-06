@@ -15,10 +15,10 @@ type OrderOptions struct {
 }
 
 type OrderAPI struct {
-	*sturdyc.Client[string]
+	cacheClient *sturdyc.Client[any]
 }
 
-func NewOrderAPI(client *sturdyc.Client[string]) *OrderAPI {
+func NewOrderAPI(client *sturdyc.Client[any]) *OrderAPI {
 	return &OrderAPI{client}
 }
 
@@ -26,7 +26,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 	// We use the  PermutedBatchKeyFn when an ID isn't enough to uniquely identify a
 	// record. The cache is going to store each id once per set of options. In a more
 	// realistic scenario, the opts would be query params or arguments to a DB query.
-	cacheKeyFn := a.PermutatedBatchKeyFn("key", opts)
+	cacheKeyFn := a.cacheClient.PermutatedBatchKeyFn("key", opts)
 
 	// We'll create a fetchFn with a closure that captures the options. For this
 	// simple example, it logs and returns the status for each order, but you could
@@ -39,7 +39,19 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 		}
 		return response, nil
 	}
-	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
+	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+}
+
+func (a *OrderAPI) DeliveryTime(ctx context.Context, ids []string, opts OrderOptions) (map[string]time.Time, error) {
+	cacheKeyFn := a.cacheClient.PermutatedBatchKeyFn("key", opts)
+	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]time.Time, error) {
+		response := make(map[string]time.Time)
+		for _, id := range cacheMisses {
+			response[id] = time.Now()
+		}
+		return response, nil
+	}
+	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
 }
 
 func main() {
@@ -68,7 +80,7 @@ func main() {
 	batchBufferTimeout := time.Second * 30
 
 	// Create a new cache client with the specified configuration.
-	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[any](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 	)

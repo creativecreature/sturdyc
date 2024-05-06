@@ -102,8 +102,8 @@ func (c *Client[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]
 // the result. Additionally, when stampede protection is enabled, GetFetch
 // determines if the record needs refreshing and, if necessary, schedules this
 // task for background execution.
-func GetFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
-	return unwrap[V](c.GetFetch(ctx, key, wrap[T](fetchFn)))
+func GetFetch[V any](ctx context.Context, c *Client[any], key string, fetchFn FetchFn[V]) (V, error) {
+	return unwrap[V](c.GetFetch(ctx, key, wrap[any](fetchFn)))
 }
 
 // GetFetchBatch attempts to retrieve the specified ids from the cache. If any
