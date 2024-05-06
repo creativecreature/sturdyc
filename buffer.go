@@ -68,9 +68,9 @@ func bufferBatchRefresh[T any](c *Client, ids []string, keyFn KeyFn, fetchFn Bat
 	idStream := make(chan []string)
 	c.bufferPermutationChan[permutationString] = idStream
 	c.bufferPermutationIDs[permutationString] = ids
+	c.batchMutex.Unlock()
 
 	safeGo(func() {
-		c.batchMutex.Unlock()
 		timer, stop := c.clock.NewTimer(c.bufferTimeout)
 
 		for {
