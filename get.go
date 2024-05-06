@@ -5,7 +5,7 @@ import (
 	"maps"
 )
 
-func (c *Cache[T]) groupIDs(ids []string, keyFn KeyFn) (hits map[string]T, misses, refreshes []string) {
+func (c *Client[T]) groupIDs(ids []string, keyFn KeyFn) (hits map[string]T, misses, refreshes []string) {
 	hits = make(map[string]T)
 	misses = make([]string, 0)
 	refreshes = make([]string, 0)
@@ -33,7 +33,7 @@ func (c *Cache[T]) groupIDs(ids []string, keyFn KeyFn) (hits map[string]T, misse
 	return hits, misses, refreshes
 }
 
-func (c *Cache[T]) get(key string) (value T, exists, ignore, refresh bool) {
+func (c *Client[T]) get(key string) (value T, exists, ignore, refresh bool) {
 	shard := c.getShard(key)
 	val, exists, ignore, refresh := shard.get(key)
 	c.reportCacheHits(exists)
@@ -41,7 +41,7 @@ func (c *Cache[T]) get(key string) (value T, exists, ignore, refresh bool) {
 }
 
 // get retrieves a value from the cache and performs a type assertion to the desired type.
-func get[T, V any](c *Cache[T], key string) (value V, exists, ignore, refresh bool) {
+func get[V, T any](c *Client[T], key string) (value V, exists, ignore, refresh bool) {
 	shard := c.getShard(key)
 	entry, exists, ignore, refresh := shard.get(key)
 	c.reportCacheHits(exists)
@@ -58,7 +58,7 @@ func get[T, V any](c *Cache[T], key string) (value V, exists, ignore, refresh bo
 	return val, exists, ignore, refresh
 }
 
-func (c *Cache[T]) Get(key string) (T, bool) {
+func (c *Client[T]) Get(key string) (T, bool) {
 	shard := c.getShard(key)
 	val, ok, _, _ := shard.get(key)
 	c.reportCacheHits(ok)
@@ -66,8 +66,8 @@ func (c *Cache[T]) Get(key string) (T, bool) {
 }
 
 // Get retrieves a value from the cache and performs a type assertion to the desired type.
-func Get[T, V any](c *Cache[T], key string) (V, bool) {
-	value, ok, _, _ := get[T, V](c, key)
+func Get[V, T any](c *Client[T], key string) (V, bool) {
+	value, ok, _, _ := get[V, T](c, key)
 	return value, ok
 }
 
@@ -76,7 +76,7 @@ func Get[T, V any](c *Cache[T], key string) (V, bool) {
 // the result. Additionally, when stampede protection is enabled, GetFetch
 // determines if the record needs refreshing and, if necessary, schedules this
 // task for background execution.
-func (c *Cache[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
+func (c *Client[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
 	// Begin by checking if we have the item in our cache.
 	value, ok, shouldIgnore, shouldRefresh := c.get(key)
 
@@ -102,8 +102,8 @@ func (c *Cache[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T])
 // the result. Additionally, when stampede protection is enabled, GetFetch
 // determines if the record needs refreshing and, if necessary, schedules this
 // task for background execution.
-func GetFetch[T, V any](ctx context.Context, c *Cache[T], key string, fetchFn FetchFn[V]) (V, error) {
-	return unwrap[T, V](c.GetFetch(ctx, key, wrap[T, V](fetchFn)))
+func GetFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
+	return unwrap[V](c.GetFetch(ctx, key, wrap[T](fetchFn)))
 }
 
 // GetFetchBatch attempts to retrieve the specified ids from the cache. If any
@@ -111,7 +111,7 @@ func GetFetch[T, V any](ctx context.Context, c *Cache[T], key string, fetchFn Fe
 // then stores the result. Additionally, when stampede protection is enabled,
 // GetFetch determines if any of the records needs refreshing and, if
 // necessary, schedules this to be performed in the background.
-func (c *Cache[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) (map[string]T, error) {
+func (c *Client[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) (map[string]T, error) {
 	cachedRecords, cacheMisses, idsToRefresh := c.groupIDs(ids, keyFn)
 
 	// If any records need to be refreshed, we'll do so in the background.
@@ -147,6 +147,6 @@ func (c *Cache[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn,
 // then stores the result. Additionally, when stampede protection is enabled,
 // GetFetch determines if any of the records needs refreshing and, if
 // necessary, schedules this to be performed in the background.
-func GetFetchBatch[T, V any](ctx context.Context, c *Cache[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
-	return unwrapBatch[T, V](c.GetFetchBatch(ctx, ids, keyFn, wrapBatch[T, V](fetchFn)))
+func GetFetchBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
+	return unwrapBatch[V](c.GetFetchBatch(ctx, ids, keyFn, wrapBatch[T](fetchFn)))
 }

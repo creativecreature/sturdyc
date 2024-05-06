@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-func fetchAndCache[T, V any](ctx context.Context, c *Cache[T], key string, fetchFn FetchFn[V]) (V, error) {
+func fetchAndCache[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
 	response, err := fetchFn(ctx)
 	res, ok := any(response).(T)
 	if !ok {
@@ -25,7 +25,7 @@ func fetchAndCache[T, V any](ctx context.Context, c *Cache[T], key string, fetch
 	return response, nil
 }
 
-func fetchAndCacheBatch[T, V any](ctx context.Context, c *Cache[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
+func fetchAndCacheBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
 	response, err := fetchFn(ctx, ids)
 	if err != nil {
 		return response, err

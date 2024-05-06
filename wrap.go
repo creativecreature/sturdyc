@@ -20,7 +20,7 @@ func wrap[T, V any](fetchFn FetchFn[V]) FetchFn[T] {
 	}
 }
 
-func unwrap[T, V any](val T, err error) (V, error) {
+func unwrap[V, T any](val T, err error) (V, error) {
 	v, ok := any(val).(V)
 	if !ok {
 		return v, errors.New("invalid response type")
@@ -46,7 +46,7 @@ func wrapBatch[T, V any](fetchFn BatchFetchFn[V]) BatchFetchFn[T] {
 	}
 }
 
-func unwrapBatch[T, V any](values map[string]T, err error) (map[string]V, error) {
+func unwrapBatch[V, T any](values map[string]T, err error) (map[string]V, error) {
 	vals := make(map[string]V, len(values))
 	for id, v := range values {
 		if val, ok := any(v).(V); ok {

@@ -3,13 +3,13 @@ package sturdyc
 import "time"
 
 // deleteBuffer should be called WITH a lock when a buffer has been processed.
-func deleteBuffer[T any](c *Cache[T], batchIdentifier string) {
+func deleteBuffer[T any](c *Client[T], batchIdentifier string) {
 	delete(c.bufferPermutationChan, batchIdentifier)
 	delete(c.bufferPermutationIDs, batchIdentifier)
 }
 
 // bufferBatchRefresh will buffer the batch of IDs until the batch size is reached or the buffer duration is exceeded.
-func bufferBatchRefresh[T any](c *Cache[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
+func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
 	if len(ids) == 0 {
 		return
 	}

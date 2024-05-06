@@ -62,7 +62,7 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 	refreshRetryInterval := time.Millisecond * 10
 
 	// The cache is going to have a 2 second TTL, and the first refresh should happen within a second.
-	client := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithClock(clock),
 	)
@@ -73,7 +73,7 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 
 	// We will start the test by trying to get key1, which wont exist in the sturdyc. Hence,
 	// the fetch function is going to get called and we'll set the initial value to val1.
-	sturdyc.GetFetch[string](ctx, client, id, fetchObserver.Fetch)
+	sturdyc.GetFetch[string](ctx, c, id, fetchObserver.Fetch)
 
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
@@ -86,7 +86,7 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := sturdyc.GetFetch(ctx, client, id, fetchObserver.Fetch)
+			_, err := sturdyc.GetFetch(ctx, c, id, fetchObserver.Fetch)
 			if err != nil {
 				panic(err)
 			}
@@ -412,7 +412,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	minRefreshDelay := time.Millisecond * 500
 	maxRefreshDelay := time.Millisecond * 1000
 	refreshRetryInterval := time.Millisecond * 10
-	client := sturdyc.New[string](capacity, shards, ttl, evictionPercentage,
+	c := sturdyc.New[string](capacity, shards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithClock(clock),
 	)
@@ -421,7 +421,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	fetchObserver := NewFetchObserver(1000)
 	fetchObserver.BatchResponse(ids)
 
-	_, err := sturdyc.GetFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, err := sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -433,7 +433,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	// Set the clock to be just before the min cache refresh threshold.
 	// This should not be enough to make the cache call our fetchFn.
 	clock.Add(minRefreshDelay - 1)
-	_, err = sturdyc.GetFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, err = sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -453,7 +453,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
-			_, goroutineErr := sturdyc.GetFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+			_, goroutineErr := sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 			if goroutineErr != nil {
 				panic(goroutineErr)
 			}

@@ -1,4 +1,5 @@
 # `sturdyc`: a caching library for building sturdy systems
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/creativecreature/sturdyc.svg)](https://pkg.go.dev/github.com/creativecreature/sturdyc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/creativecreature/sturdyc/blob/master/LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/creativecreature/sturdyc)](https://goreportcard.com/report/github.com/creativecreature/sturdyc)
@@ -11,8 +12,10 @@ writes. The [xxhash](https://github.com/cespare/xxhash) algorithm is used for
 efficient key distribution. Evictions are performed per shard based on recency at
 O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
-It has all the functionality you would expect from a caching library, along with
-additional features designed to help you build robust applications, such as:
+It has all the functionality you would expect from a caching library, along
+with additional features designed to help you build performant and robust
+applications, such as:
+
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
 - [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
@@ -20,6 +23,7 @@ additional features designed to help you build robust applications, such as:
 - [**refresh buffering**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-buffering)
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
+- [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
 
 The package has great support for batchable data sources as it takes the
 response apart, and then caches each record individually based on the
@@ -30,29 +34,37 @@ gathered enough IDs
 
 Records can be configured to refresh either based on time or at a certain rate
 of requests. All refreshes occur in the background, ensuring that users never
-have to wait for a record to be updated, resulting in *very low latency*
-applications.
+have to wait for a record to be updated, resulting in _very low latency_
+applications while also allowing unused keys to expire.
 
 There are examples for all of these configurations further down this file!
 
 # Installing
+
 ```sh
 go get github.com/creativecreature/sturdyc
 ```
 
 # At a glance
-The package exports the following functions:
-- Use [`sturdyc.Set`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Set) to write a record to the cache.
-- Use [`sturdyc.SetMany`](https://pkg.go.dev/github.com/creativecreature/sturdyc#SetMany) to write multiple records to the cache.
-- Use [`sturdyc.Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Get) to get a record from the cache.
-- Use [`sturdyc.GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch) to have the cache fetch and store a record.
-- Use [`sturdyc.GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch) to have the cache fetch and store a batch of records.
-- Use [`sturdyc.Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Passthrough) to have the cache fetch and store a record.
-- Use [`sturdyc.PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#PassthroughBatch) to have the cache fetch and store a batch of records.
-- Use [`sturdyc.Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Size) to get the number of items in the cache.
 
-To utilize these functions, you will first have to set up a client to manage
-your configuration:
+The package exports the following functions:
+
+- Use [`Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Get) to get a record from the cache.
+- Use [`GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetFetch) to have the cache fetch and store a record.
+- Use [`GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetFetchBatch) to have the cache fetch and store a batch of records.
+- Use [`Set`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Set) to write a record to the cache.
+- Use [`SetMany`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.SetMany) to write multiple records to the cache.
+- Use [`Delete`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Delete) to delete a record from the cache.
+- Use [`Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Passthrough) to have the cache fetch and store a record.
+- Use [`PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PassthroughBatch) to have the cache fetch and store a batch of records.
+- Use [`Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Size) to get the number of items in the cache.
+- Use [`Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Size) to get the number of items in the cache.
+- Use [`PermutatedKey`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PermutatedKey) to create a permutated cache key.
+- Use [`PermutatedBatchKeyFn`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PermutatedBatchKey) to create a permutated cache key for every record in a batch.
+- Use [`BatchKeyFn`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.BatchKeyFn) to create a cache key for every record in a batch.
+
+To utilize these functions, you will first have to set up a cache client to
+manage your configuration:
 
 ```go
 func main() {
@@ -83,9 +95,10 @@ func main() {
 }
 ```
 
-Next, we'll look at some of the more *advanced features*.
+Next, we'll look at some of the more _advanced features_.
 
 # Stampede protection
+
 Cache stampedes (also known as thundering herd) occur when many requests for a
 particular piece of data (which has just expired or been evicted from the
 cache) come in at once. This can cause all requests to fetch the data
@@ -184,6 +197,7 @@ go run .
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/stampede)
 
 # Non-existent records
+
 Another factor to consider is non-existent keys. It could be an ID that has
 been added manually to a CMS with a typo that leads to no data being returned
 from the upstream source. This can significantly increase our systems latency,
@@ -226,7 +240,7 @@ func main() {
 ```
 
 Next, we'll modify the API client to return the `ErrStoreMissingRecord` error
-for the first *3* calls. This error instructs the cache to store it as a missing
+for the first _3_ calls. This error instructs the cache to store it as a missing
 record:
 
 ```go
@@ -296,6 +310,7 @@ refreshes and then transitions into having a value:
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/missing)
 
 # Batch endpoints
+
 One challenge with caching batchable endpoints is that you have to find a way
 to reduce the number of keys. To illustrate, let's say that we have 10 000
 records, and an endpoint for fetching them that allows for batches of 20.
@@ -409,6 +424,7 @@ batch looks like:
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/batch)
 
 # Cache key permutations
+
 If you're attempting to cache data from an upstream system, the ID alone may be
 insufficient to uniquely identify the record in your cache. The endpoint you're
 calling might accept a variety of options that transform the data in different
@@ -489,14 +505,15 @@ func main() {
 }
 ```
 
- At this point, the cache has stored each record individually for each option set:
- - FEDEX-2024-04-06-id1
- - DHL-2024-04-07-id1
- - UPS-2024-04-08-id1
- - etc..
+At this point, the cache has stored each record individually for each option set:
 
- Next, we'll add a sleep to make sure that all of the records are due for a
- refresh, and then request the ids individually for each set of options:
+- FEDEX-2024-04-06-id1
+- DHL-2024-04-07-id1
+- UPS-2024-04-08-id1
+- etc..
+
+Next, we'll add a sleep to make sure that all of the records are due for a
+refresh, and then request the ids individually for each set of options:
 
 ```go
 func main() {
@@ -541,10 +558,11 @@ go run .
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/permutations)
 
 # Refresh buffering
+
 As seen in the example above, we're not really utilizing the fact that the
 endpoint is batchable when we're performing the refreshes.
 
-To make this more efficient, we can enable the *refresh buffering*
+To make this more efficient, we can enable the _refresh buffering_
 functionality. Internally, the cache is going to create a buffer for each
 permutation of our options. It is then going to collect ids until it reaches a
 certain size, or exceeds a time threshold.
@@ -589,6 +607,7 @@ go run .
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/buffering)
 
 # Passthrough
+
 Time-based refreshes work really well for most use cases. However, there are
 scenarios where you might want to allow a certain amount of traffic to hit the
 underlying data source. For example, you might achieve a 99.99% cache hit rate,
@@ -608,7 +627,6 @@ underlying system goes down, `sturdyc.Passthrough` and
 `sturdyc.PassthroughBatch` will still be able to serve stale data until the
 record's TTL expires.
 
-
 ```go
 capacity := 5
 numShards := 2
@@ -626,7 +644,9 @@ batchRes, batchErr := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("it
 ```
 
 # Custom metrics
+
 The cache can be configured to report custom metrics for:
+
 - Size of the cache
 - Cache hits
 - Cache misses
@@ -672,3 +692,5 @@ Below are a few images where these metrics have been visualized in Grafana:
 <img width="941" alt="Screenshot 2024-05-04 at 12 38 04" src="https://github.com/creativecreature/sturdyc/assets/12787673/b1359867-f1ef-4a09-8c75-d7d2360726f1">
 
 <img width="940" alt="Screenshot 2024-05-04 at 12 38 20" src="https://github.com/creativecreature/sturdyc/assets/12787673/de7f00ee-b14d-443b-b69e-91e19665c252">
+
+# Generics

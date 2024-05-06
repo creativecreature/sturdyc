@@ -31,7 +31,7 @@ type BatchResponse[T any] map[string]T
 // operation returns. It is used to create unique cache keys.
 type KeyFn func(id string) string
 
-// Config represents the configuration that can be applied to a Cache instance.
+// Config represents the configuration that can be applied to the cache.
 type Config struct {
 	clock            Clock
 	evictionInterval time.Duration
@@ -58,8 +58,8 @@ type Config struct {
 	getSize                  func() int
 }
 
-// Cache represents a cache client that can be used to store and retrieve data.
-type Cache[T any] struct {
+// Client represents a cache client that can be used to store and retrieve values.
+type Client[T any] struct {
 	*Config
 	ttl       time.Duration
 	shards    []*shard[T]
@@ -73,10 +73,10 @@ type Cache[T any] struct {
 // `ttl` Sets the time to live for each entry in the cache. Has to be greater than 0.
 // `evictionPercentage` Percentage of items to evict when the cache exceeds its capacity.
 // `opts` allows for additional configurations to be applied to the cache client.
-func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage int, opts ...Option) *Cache[T] {
+func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage int, opts ...Option) *Client[T] {
 	validateArgs(capacity, numShards, ttl, evictionPercentage)
 
-	client := &Cache[T]{ttl: ttl}
+	client := &Client[T]{ttl: ttl}
 
 	// Create a default configuration.
 	cfg := &Config{
@@ -107,7 +107,7 @@ func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage i
 }
 
 // Size returns the number of entries in the cache.
-func (c *Cache[T]) Size() int {
+func (c *Client[T]) Size() int {
 	var sum int
 	for _, shard := range c.shards {
 		sum += shard.size()
@@ -116,13 +116,13 @@ func (c *Cache[T]) Size() int {
 }
 
 // Delete removes a single entry from the cache.
-func (c *Cache[T]) Delete(key string) {
+func (c *Client[T]) Delete(key string) {
 	shard := c.getShard(key)
 	shard.delete(key)
 }
 
 // startEvictions is going to be running in a separate goroutine that we're going to prevent from ever exiting.
-func (c *Cache[T]) startEvictions() {
+func (c *Client[T]) startEvictions() {
 	go func() {
 		ticker, stop := c.clock.NewTicker(c.evictionInterval)
 		defer stop()
@@ -137,7 +137,7 @@ func (c *Cache[T]) startEvictions() {
 }
 
 // getShard returns the shard that should be used for the specified key.
-func (c *Cache[T]) getShard(key string) *shard[T] {
+func (c *Client[T]) getShard(key string) *shard[T] {
 	hash := xxhash.Sum64String(key)
 	shardIndex := hash % uint64(len(c.shards))
 	if c.metricsRecorder != nil {
@@ -147,7 +147,7 @@ func (c *Cache[T]) getShard(key string) *shard[T] {
 }
 
 // reportCacheHits is used to report cache hits and misses to the metrics recorder.
-func (c *Cache[T]) reportCacheHits(cacheHit bool) {
+func (c *Client[T]) reportCacheHits(cacheHit bool) {
 	if c.metricsRecorder == nil {
 		return
 	}
@@ -159,7 +159,7 @@ func (c *Cache[T]) reportCacheHits(cacheHit bool) {
 }
 
 // set writes a single value to the cache. Returns true if it triggered an eviction.
-func (c *Cache[T]) set(key string, value T, isMissingRecord bool) bool {
+func (c *Client[T]) set(key string, value T, isMissingRecord bool) bool {
 	shard := c.getShard(key)
 	return shard.set(key, value, isMissingRecord)
 }

@@ -11,7 +11,7 @@ import (
 // it should allow a request to passthrough to the underlying data source. This
 // is performed in the background, and the cache cached record will be updated
 // with the response.
-func (c *Cache[T]) Passthrough(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
+func (c *Client[T]) Passthrough(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
 	if value, ok, _, _ := c.get(key); ok {
 		// Check if we should do a passthrough.
 		if c.passthroughPercentage >= 100 || rand.IntN(100) >= c.passthroughPercentage {
@@ -24,9 +24,9 @@ func (c *Cache[T]) Passthrough(ctx context.Context, key string, fetchFn FetchFn[
 	return fetchAndCache(ctx, c, key, fetchFn)
 }
 
-func Passthrough[T, V any](ctx context.Context, c *Cache[T], key string, fetchFn FetchFn[V]) (V, error) {
-	value, err := c.Passthrough(ctx, key, wrap[T, V](fetchFn))
-	return unwrap[T, V](value, err)
+func Passthrough[T, V any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
+	value, err := c.Passthrough(ctx, key, wrap[T](fetchFn))
+	return unwrap[V](value, err)
 }
 
 // PassthroughBatch attempts to retrieve the ids from the cache. If looking up
@@ -35,7 +35,7 @@ func Passthrough[T, V any](ctx context.Context, c *Cache[T], key string, fetchFn
 // check to determine if it should allow a request to passthrough to the
 // underlying data source. This is performed in the background, and the cache
 // will be updated with the response.
-func (c *Cache[T]) PassthroughBatch(ctx context.Context, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) (map[string]T, error) {
+func (c *Client[T]) PassthroughBatch(ctx context.Context, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) (map[string]T, error) {
 	cachedRecords, cacheMisses, _ := c.groupIDs(ids, keyFn)
 
 	// If we have cache misses, we're going to perform an outgoing refresh
@@ -62,7 +62,7 @@ func (c *Cache[T]) PassthroughBatch(ctx context.Context, ids []string, keyFn Key
 	return cachedRecords, nil
 }
 
-func PassthroughBatch[T, V any](ctx context.Context, c *Cache[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
-	res, err := c.PassthroughBatch(ctx, ids, keyFn, wrapBatch[T, V](fetchFn))
-	return unwrapBatch[T, V](res, err)
+func PassthroughBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
+	res, err := c.PassthroughBatch(ctx, ids, keyFn, wrapBatch[T](fetchFn))
+	return unwrapBatch[V](res, err)
 }

@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-func (c *Cache[T]) refresh(key string, fetchFn FetchFn[T]) {
+func (c *Client[T]) refresh(key string, fetchFn FetchFn[T]) {
 	response, err := fetchFn(context.Background())
 	if err != nil {
 		if c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
@@ -16,7 +16,7 @@ func (c *Cache[T]) refresh(key string, fetchFn FetchFn[T]) {
 	c.set(key, response, false)
 }
 
-func (c *Cache[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
+func (c *Client[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
 	if c.metricsRecorder != nil {
 		c.metricsRecorder.CacheBatchRefreshSize(len(ids))
 	}

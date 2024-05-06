@@ -12,10 +12,10 @@ import (
 )
 
 type API struct {
-	cacheClient *sturdyc.Cache
+	cacheClient *sturdyc.Client[string]
 }
 
-func NewAPI(c *sturdyc.Cache) *API {
+func NewAPI(c *sturdyc.Client[string]) *API {
 	return &API{c}
 }
 
@@ -60,7 +60,7 @@ func main() {
 	storeMisses := true
 
 	// Create a cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 	)
 
