@@ -19,16 +19,14 @@ func main() {
 	evictionPercentage := 10
 
 	// Create a cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage)
+	cacheClient := sturdyc.New[int](capacity, numShards, ttl, evictionPercentage)
 
-	// We can then use the client with generic functions to store and retrieve values.
-	sturdyc.Set(cacheClient, "key1", "value")
-	if val, ok := sturdyc.Get[string](cacheClient, "key1"); ok {
-		log.Println(val)
-	}
+	cacheClient.Set("key1", 99)
 
-	sturdyc.Set(cacheClient, "key2", 1)
-	if val, ok := sturdyc.Get[int](cacheClient, "key2"); ok {
-		log.Println(val)
-	}
+	log.Println(cacheClient.Size())
+	log.Println(cacheClient.Get("key1"))
+
+	cacheClient.Delete("key1")
+	log.Println(cacheClient.Size())
+	log.Println(cacheClient.Get("key1"))
 }

@@ -15,20 +15,18 @@ type OrderOptions struct {
 }
 
 type OrderAPI struct {
-	cacheClient *sturdyc.Client
+	*sturdyc.Client[string]
 }
 
-func NewOrderAPI(client *sturdyc.Client) *OrderAPI {
-	return &OrderAPI{
-		cacheClient: client,
-	}
+func NewOrderAPI(client *sturdyc.Client[string]) *OrderAPI {
+	return &OrderAPI{client}
 }
 
 func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOptions) (map[string]string, error) {
 	// We use the  PermutedBatchKeyFn when an ID isn't enough to uniquely identify a
 	// record. The cache is going to store each id once per set of options. In a more
 	// realistic scenario, the opts would be query params or arguments to a DB query.
-	cacheKeyFn := a.cacheClient.PermutatedBatchKeyFn("key", opts)
+	cacheKeyFn := a.PermutatedBatchKeyFn("key", opts)
 
 	// We'll create a fetchFn with a closure that captures the options. For this
 	// simple example, it logs and returns the status for each order, but you could
@@ -41,7 +39,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 		}
 		return response, nil
 	}
-	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 
 func main() {
@@ -70,7 +68,7 @@ func main() {
 	batchBufferTimeout := time.Second * 30
 
 	// Create a new cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 	)

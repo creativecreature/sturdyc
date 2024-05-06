@@ -7,53 +7,33 @@ import (
 	"time"
 )
 
-type shard struct {
+type shard[T any] struct {
 	sync.RWMutex
+	*Config
 	capacity           int
 	ttl                time.Duration
-	entries            map[string]*entry
-	clock              Clock
-	metricsRecorder    MetricsRecorder
+	entries            map[string]*entry[T]
 	evictionPercentage int
-	refreshesEnabled   bool
-	minRefreshTime     time.Duration
-	maxRefreshTime     time.Duration
-	retryBaseDelay     time.Duration
 }
 
-func newShard(
-	capacity int,
-	ttl time.Duration,
-	evictionPercentage int,
-	clock Clock,
-	metricsRecorder MetricsRecorder,
-	refreshesEnabled bool,
-	minRefreshTime,
-	maxRefreshTime time.Duration,
-	retryBaseDelay time.Duration,
-) *shard {
-	return &shard{
+func newShard[T any](capacity int, ttl time.Duration, evictionPercentage int, cfg *Config) *shard[T] {
+	return &shard[T]{
+		Config:             cfg,
 		capacity:           capacity,
 		ttl:                ttl,
-		entries:            make(map[string]*entry),
+		entries:            make(map[string]*entry[T]),
 		evictionPercentage: evictionPercentage,
-		clock:              clock,
-		metricsRecorder:    metricsRecorder,
-		minRefreshTime:     minRefreshTime,
-		maxRefreshTime:     maxRefreshTime,
-		refreshesEnabled:   refreshesEnabled,
-		retryBaseDelay:     retryBaseDelay,
 	}
 }
 
-func (s *shard) size() int {
+func (s *shard[T]) size() int {
 	s.RLock()
 	defer s.RUnlock()
 	return len(s.entries)
 }
 
 // evictExpired evicts all the expired entries in the shard.
-func (s *shard) evictExpired() {
+func (s *shard[T]) evictExpired() {
 	s.Lock()
 	defer s.Unlock()
 
@@ -71,7 +51,7 @@ func (s *shard) evictExpired() {
 
 // forceEvict evicts a certain percentage of the entries in the shard
 // based on the expiration time. NOTE: Should be called with a lock.
-func (s *shard) forceEvict() {
+func (s *shard[T]) forceEvict() {
 	if s.metricsRecorder != nil {
 		s.metricsRecorder.ForcedEviction()
 	}
@@ -94,17 +74,17 @@ func (s *shard) forceEvict() {
 	}
 }
 
-func (s *shard) get(key string) (val any, exists, ignore, refresh bool) {
+func (s *shard[T]) get(key string) (val T, exists, ignore, refresh bool) {
 	s.RLock()
 	item, ok := s.entries[key]
 	if !ok {
 		s.RUnlock()
-		return nil, false, false, false
+		return val, false, false, false
 	}
 
 	if s.clock.Now().After(item.expiresAt) {
 		s.RUnlock()
-		return nil, false, false, false
+		return val, false, false, false
 	}
 
 	shouldRefresh := s.refreshesEnabled && s.clock.Now().After(item.refreshAt)
@@ -135,7 +115,7 @@ func (s *shard) get(key string) (val any, exists, ignore, refresh bool) {
 }
 
 // set sets a key-value pair in the shard. Returns true if it triggered an eviction.
-func (s *shard) set(key string, value any, isMissingRecord bool) bool {
+func (s *shard[T]) set(key string, value T, isMissingRecord bool) bool {
 	s.Lock()
 	defer s.Unlock()
 
@@ -153,7 +133,7 @@ func (s *shard) set(key string, value any, isMissingRecord bool) bool {
 	}
 
 	now := s.clock.Now()
-	newEntry := &entry{
+	newEntry := &entry[T]{
 		key:             key,
 		value:           value,
 		expiresAt:       now.Add(s.ttl),
@@ -175,7 +155,7 @@ func (s *shard) set(key string, value any, isMissingRecord bool) bool {
 	return evict
 }
 
-func (s *shard) delete(key string) {
+func (s *shard[T]) delete(key string) {
 	s.Lock()
 	defer s.Unlock()
 	delete(s.entries, key)

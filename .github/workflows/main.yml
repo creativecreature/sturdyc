@@ -15,7 +15,7 @@ jobs:
         with:
           go-version: 1.22.0
       - name: Test
-        run: go test -race -v ./... -coverprofile ./coverage.txt
+        run: go test -timeout 30s -race -v ./... -coverprofile ./coverage.txt
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4.0.1
         with:
