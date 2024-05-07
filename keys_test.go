@@ -182,3 +182,23 @@ func TestPermutatedBatchKeyFn(t *testing.T) {
 		t.Errorf("got: %s wanted: %s", got, want)
 	}
 }
+
+func TestTimePointers(t *testing.T) {
+	t.Parallel()
+
+	type opts struct{ Time *time.Time }
+	cache := sturdyc.New[any](100, 1, time.Hour, 5)
+
+	now := time.Now().Truncate(time.Hour)
+	got := cache.PermutatedKey("key", opts{Time: &now})
+	want := "key-" + strconv.Itoa(int(now.Unix()))
+	if got != want {
+		t.Errorf("got: %s wanted: %s", got, want)
+	}
+
+	got = cache.PermutatedKey("key", opts{Time: nil})
+	want = "key-nil"
+	if got != want {
+		t.Errorf("got: %s wanted: %s", got, want)
+	}
+}
