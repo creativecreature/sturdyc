@@ -697,15 +697,15 @@ use `any` as the type:
 
 However, if this data source has more than a handful of types, the type
 conversions may quickly feel like too much boilerplate. If that is the case,
-you can use any of package level functions that performs these conversions for
-you:
+you can use any of these package level functions:
 
 - [`GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch)
 - [`GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch)
 - [`Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Passthrough)
 - [`PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#PassthroughBatch)
 
-If any of the conversions fail, you'll get a [`ErrInvalidType`](https://pkg.go.dev/github.com/creativecreature/sturdyc#pkg-variables) error.
+They will perform the type conversions for you, and if any of them where to fail,
+you'll get a [`ErrInvalidType`](https://pkg.go.dev/github.com/creativecreature/sturdyc#pkg-variables) error.
 
 Below is an example of what an API client that uses these functions might look
 like:
