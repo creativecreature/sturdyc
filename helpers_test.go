@@ -55,6 +55,8 @@ func (r *TestMetricsRecorder) CacheMiss() {
 func (r *TestMetricsRecorder) ObserveCacheSize(_ func() int) {}
 
 func (r *TestMetricsRecorder) CacheBatchRefreshSize(n int) {
+	r.Lock()
+	defer r.Unlock()
 	r.batchSizes = append(r.batchSizes, n)
 }
 
@@ -128,11 +130,16 @@ func NewFetchObserver(bufferSize int) *FetchObserver {
 }
 
 func (f *FetchObserver) Response(id string) {
+	f.Lock()
+	defer f.Unlock()
 	f.response = "value" + id
 }
 
 // BatchResponse adds a response to the response cache for each id in ids.
 func (f *FetchObserver) BatchResponse(ids []string) {
+	f.Lock()
+	defer f.Unlock()
+
 	responseMap := make(map[string]string, len(ids))
 	for _, id := range ids {
 		responseMap[id] = "value" + id

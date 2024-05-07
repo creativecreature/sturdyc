@@ -60,3 +60,24 @@ func TestCutoff(t *testing.T) {
 		})
 	}
 }
+
+func TestReturnsEmptyTimeIfArgumentsAreInvalid(t *testing.T) {
+	t.Parallel()
+
+	values := make([]time.Time, 0, 10)
+	for i := 0; i < 10; i++ {
+		values = append(values, time.Now().Add(time.Duration(i)*time.Second))
+	}
+
+	if k := sturdyc.FindCutoff(values, -1); !k.IsZero() {
+		t.Errorf("expected zero time, got %v", k)
+	}
+
+	if k := sturdyc.FindCutoff(values, 1.1); !k.IsZero() {
+		t.Errorf("expected zero time, got %v", k)
+	}
+
+	if k := sturdyc.FindCutoff([]time.Time{}, 0.4); !k.IsZero() {
+		t.Errorf("expected zero time, got %v", k)
+	}
+}

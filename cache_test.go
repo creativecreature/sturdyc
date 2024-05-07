@@ -1,6 +1,7 @@
 package sturdyc_test
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -191,5 +192,89 @@ func TestDisablingForcedEvictionMakesSetANoop(t *testing.T) {
 	defer metricRecorder.Unlock()
 	if metricRecorder.forcedEvictions > 0 {
 		t.Errorf("expected no forced evictions, got %d", metricRecorder.forcedEvictions)
+	}
+}
+
+func TestSetMany(t *testing.T) {
+	t.Parallel()
+
+	c := sturdyc.New[int](1000, 10, time.Hour, 5)
+
+	if c.Size() != 0 {
+		t.Errorf("expected cache size to be 0, got %d", c.Size())
+	}
+
+	records := make(map[string]int, 10)
+	for i := 0; i < 10; i++ {
+		records[strconv.Itoa(i)] = i
+	}
+	c.SetMany(records, c.BatchKeyFn("key"))
+
+	if c.Size() != 10 {
+		t.Errorf("expected cache size to be 10, got %d", c.Size())
+	}
+}
+
+func TestEvictsAndReturnsTheCorrectSize(t *testing.T) {
+	t.Parallel()
+
+	// Let's create a cache with a capacity of 100 and a
+	// single shard. We'll set the eviction percentage to 10%.
+	client := sturdyc.New[int](100, 1, time.Hour, 10)
+
+	// Now, if we were to write 101 items, which is 1 more
+	// than our capacity, we expect 10% to have been evicted.
+	for i := 0; i < 101; i++ {
+		client.Set(strconv.Itoa(i), i)
+	}
+
+	if client.Size() != 91 {
+		t.Errorf("expected cache size to be 91, got %d", client.Size())
+	}
+}
+
+func TestDeletesAllItemsAcrossMultipleShards(t *testing.T) {
+	t.Parallel()
+
+	client := sturdyc.New[string](1_000_000, 1000, time.Hour, 10)
+
+	ids := make([]string, 0, 10_000)
+	for i := 0; i < 10_000; i++ {
+		id := randKey(12)
+		ids = append(ids, id)
+		client.Set(id, "value")
+	}
+
+	if client.Size() != 10_000 {
+		t.Errorf("expected cache size to be 10_000, got %d", client.Size())
+	}
+
+	for _, id := range ids {
+		client.Delete(id)
+	}
+
+	if client.Size() != 0 {
+		t.Errorf("expected cache size to be 0, got %d", client.Size())
+	}
+}
+
+func TestReportsMetricsForHitsAndMisses(t *testing.T) {
+	t.Parallel()
+
+	metricsRecorder := newTestMetricsRecorder(10)
+	client := sturdyc.New[string](100, 10, time.Hour, 5,
+		sturdyc.WithMetrics(metricsRecorder),
+	)
+
+	client.Set("existing-key", "value")
+	client.Get("existing-key")
+	client.Get("non-existent-key")
+
+	if metricsRecorder.cacheHits != 1 {
+		t.Errorf("expected 1 cache hit, got %d", metricsRecorder.cacheHits)
+	}
+
+	if metricsRecorder.cacheMisses != 1 {
+		t.Errorf("expected 1 cache miss, got %d", metricsRecorder.cacheMisses)
 	}
 }

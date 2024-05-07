@@ -415,6 +415,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	c := sturdyc.New[string](capacity, shards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithClock(clock),
+		sturdyc.WithMetrics(newTestMetricsRecorder(shards)),
 	)
 
 	ids := []string{"1", "2", "3"}
@@ -469,4 +470,200 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	// During that time a second goroutine could have refreshed id 2 and 3.
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertMaxFetchCount(t, 4)
+}
+
+func TestGetFetchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	capacity := 1000
+	numShards := 10
+	ttl := time.Hour
+	evictionPercentage := 10
+	clock := sturdyc.NewTestClock(time.Now())
+	minRefreshDelay := time.Millisecond * 500
+	maxRefreshDelay := time.Second
+	refreshRetryInterval := time.Millisecond * 10
+
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, false),
+		sturdyc.WithClock(clock),
+	)
+
+	id := "1"
+	fetchObserver := NewFetchObserver(1)
+	fetchObserver.Response(id)
+
+	c.GetFetch(ctx, id, fetchObserver.Fetch)
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	time.Sleep(time.Millisecond * 10)
+
+	if c.Size() != 1 {
+		t.Errorf("expected cache to have 1 records, got %v", c.Size())
+	}
+
+	// Now we're going to go past the refresh delay, and return an error
+	// that indicates that the record has been deleted at the source.
+	fetchObserver.Clear()
+	fetchObserver.Err(sturdyc.ErrDeleteRecord)
+	clock.Add(maxRefreshDelay + 1)
+	c.GetFetch(ctx, id, fetchObserver.Fetch)
+	<-fetchObserver.FetchCompleted
+	time.Sleep(time.Millisecond * 10)
+
+	if c.Size() != 0 {
+		t.Errorf("expected cache to have 0 records, got %v", c.Size())
+	}
+}
+
+func TestGetFetchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	capacity := 1000
+	numShards := 10
+	ttl := time.Hour
+	evictionPercentage := 10
+	clock := sturdyc.NewTestClock(time.Now())
+	minRefreshDelay := time.Millisecond * 500
+	maxRefreshDelay := time.Second
+	refreshRetryInterval := time.Millisecond * 10
+
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
+		sturdyc.WithClock(clock),
+	)
+
+	id := "1"
+	fetchObserver := NewFetchObserver(1)
+	fetchObserver.Response(id)
+
+	c.GetFetch(ctx, id, fetchObserver.Fetch)
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	time.Sleep(time.Millisecond * 10)
+
+	if c.Size() != 1 {
+		t.Errorf("expected cache to have 1 records, got %v", c.Size())
+	}
+	if _, ok := c.Get(id); !ok {
+		t.Errorf("expected item to exist in the cache")
+	}
+
+	// Now we're going to go past the refresh delay, and return an error
+	// that indicates that the record should now be stored as missing.
+	fetchObserver.Clear()
+	fetchObserver.Err(sturdyc.ErrStoreMissingRecord)
+	clock.Add(maxRefreshDelay + 1)
+	c.GetFetch(ctx, id, fetchObserver.Fetch)
+	<-fetchObserver.FetchCompleted
+	time.Sleep(time.Millisecond * 10)
+
+	if c.Size() != 1 {
+		t.Errorf("expected cache to have 1 record, got %v", c.Size())
+	}
+	if _, ok := c.Get(id); ok {
+		t.Errorf("expected item to not be returned by the Get call because it's a missing record")
+	}
+}
+
+func TestGetFetchBatchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	capacity := 1000
+	numShards := 10
+	ttl := time.Hour
+	evictionPercentage := 10
+	clock := sturdyc.NewTestClock(time.Now())
+	minRefreshDelay := time.Millisecond * 500
+	maxRefreshDelay := time.Second
+	refreshRetryInterval := time.Millisecond * 10
+
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, false),
+		sturdyc.WithClock(clock),
+	)
+
+	ids := []string{"1", "2", "3", "4", "5"}
+	fetchObserver := NewFetchObserver(1)
+	fetchObserver.BatchResponse(ids)
+
+	c.GetFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	time.Sleep(time.Millisecond * 10)
+
+	if c.Size() != 5 {
+		t.Errorf("expected cache to have 5 records, got %v", c.Size())
+	}
+
+	// Now we're going to go past the refresh delay, and
+	// only return the first 3 records from the source.
+	fetchObserver.BatchResponse([]string{"1", "2", "3"})
+	clock.Add(maxRefreshDelay + 1)
+	c.GetFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 2)
+	time.Sleep(time.Millisecond * 10)
+
+	// The other two records should have been deleted.
+	if c.Size() != 3 {
+		t.Errorf("expected cache to have 3 records, got %v", c.Size())
+	}
+}
+
+func TestGetFetchBatchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	capacity := 1000
+	numShards := 10
+	ttl := time.Hour
+	evictionPercentage := 10
+	clock := sturdyc.NewTestClock(time.Now())
+	minRefreshDelay := time.Millisecond * 500
+	maxRefreshDelay := time.Second
+	refreshRetryInterval := time.Millisecond * 10
+
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
+		sturdyc.WithClock(clock),
+	)
+
+	ids := []string{"1", "2", "3"}
+	fetchObserver := NewFetchObserver(1)
+	fetchObserver.BatchResponse(ids)
+
+	c.GetFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	time.Sleep(time.Millisecond * 10)
+
+	if c.Size() != 3 {
+		t.Errorf("expected cache to have 3 records, got %v", c.Size())
+	}
+
+	if _, ok := c.Get(c.BatchKeyFn("item")("3")); !ok {
+		t.Errorf("expected key3 to exist in the cache")
+	}
+
+	// Now we're going to go past the refresh delay, and
+	// only return the first 2 records from the source.
+	fetchObserver.BatchResponse([]string{"1", "2"})
+	clock.Add(maxRefreshDelay + 1)
+	c.GetFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 2)
+	time.Sleep(time.Millisecond * 10)
+
+	// The record should now exist as a missing record. Hence, the size should still be
+	// 3. However, we should not be able to pull this item out of the cache using Get.
+	if c.Size() != 3 {
+		t.Errorf("expected cache to have 3 records, got %v", c.Size())
+	}
+	if _, ok := c.Get(c.BatchKeyFn("item")("3")); ok {
+		t.Errorf("expected key3 to not be returned by Get")
+	}
 }

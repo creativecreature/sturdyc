@@ -88,8 +88,9 @@ func TestHalfPassthrough(t *testing.T) {
 	}
 
 	// It's not possible to know how many requests we'll let through. We expect
-	// half, which would be 50, but let's use 10 as a margin of safety.
-	safetyMargin := 10
+	// half, which would be 50, but let's use 15 as a margin of safety because
+	// we can't control the randomness.
+	safetyMargin := 15
 	for i := 0; i < (numPassthroughs/2)-safetyMargin; i++ {
 		<-fetchObserver.FetchCompleted
 	}
