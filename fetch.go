@@ -7,18 +7,20 @@ import (
 
 func fetchAndCache[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
 	response, err := fetchFn(ctx)
-	res, ok := any(response).(T)
-	if !ok {
-		return response, errors.New("invalid response type")
-	}
 
 	if err != nil && c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
-		c.SetMissing(key, res, true)
+		var zero T
+		c.SetMissing(key, zero, true)
 		return response, ErrMissingRecord
 	}
 
 	if err != nil {
 		return response, err
+	}
+
+	res, ok := any(response).(T)
+	if !ok {
+		return response, ErrInvalidType
 	}
 
 	c.SetMissing(key, res, false)
