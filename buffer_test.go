@@ -32,7 +32,7 @@ func TestBatchIsRefreshedWhenTheTimeoutExpires(t *testing.T) {
 	// - The queued refresh will be executed under two conditions:
 	//    1. The number of scheduled refreshes exceeds the specified 'batchSize'.
 	//    2. The 'batchBufferTimeout' threshold is exceeded.
-	client := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	client := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 		sturdyc.WithClock(clock),
@@ -96,7 +96,7 @@ func TestBatchIsRefreshedWhenTheBufferSizeIsReached(t *testing.T) {
 	// - The queued refresh will be executed under two conditions:
 	//    1. The number of scheduled refreshes exceeds the specified 'batchSize'.
 	//    2. The 'batchBufferTimeout' threshold is exceeded.
-	client := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	client := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 		sturdyc.WithClock(clock),
@@ -188,7 +188,7 @@ func TestBatchIsNotRefreshedByDuplicates(t *testing.T) {
 	// - The queued refresh will be executed under two conditions:
 	//    1. The number of scheduled refreshes exceeds the specified 'batchSize'.
 	//    2. The 'batchBufferTimeout' threshold is exceeded.
-	client := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	client := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 		sturdyc.WithClock(clock),
@@ -256,7 +256,7 @@ func TestBatchesAreGroupedByPermutations(t *testing.T) {
 	// - The queued refresh will be executed under two conditions:
 	//    1. The number of scheduled refreshes exceeds the specified 'batchSize'.
 	//    2. The 'batchBufferTimeout' threshold is exceeded.
-	c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	c := sturdyc.New[any](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 		sturdyc.WithClock(clock),
@@ -346,7 +346,7 @@ func TestLargeBatchesAreChunkedCorrectly(t *testing.T) {
 	// - The queued refresh will be executed under two conditions:
 	//    1. The number of scheduled refreshes exceeds the specified 'batchSize'.
 	//    2. The 'batchBufferTimeout' threshold is exceeded.
-	client := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	client := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 		sturdyc.WithClock(clock),

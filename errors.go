@@ -15,6 +15,9 @@ var (
 	// remaining records failed. The consumer can then choose if they want to
 	// proceed with the cached records or retry the operation.
 	ErrOnlyCachedRecords = errors.New("failed to fetch the records that we did not have cached")
+	// ErrInvalidType is returned when you try to use one of the generic
+	// package level functions, and the type assertion fails.
+	ErrInvalidType = errors.New("invalid response type")
 )
 
 func ErrIsStoreMissingRecordOrMissingRecord(err error) bool {

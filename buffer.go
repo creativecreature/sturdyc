@@ -3,20 +3,20 @@ package sturdyc
 import "time"
 
 // deleteBuffer should be called WITH a lock when a buffer has been processed.
-func deleteBuffer(c *Client, batchIdentifier string) {
+func deleteBuffer[T any](c *Client[T], batchIdentifier string) {
 	delete(c.bufferPermutationChan, batchIdentifier)
 	delete(c.bufferPermutationIDs, batchIdentifier)
 }
 
 // bufferBatchRefresh will buffer the batch of IDs until the batch size is reached or the buffer duration is exceeded.
-func bufferBatchRefresh[T any](c *Client, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
+func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
 	if len(ids) == 0 {
 		return
 	}
 
 	// If we got a perfect batch size, we can refresh the records immediately.
 	if len(ids) == c.batchSize {
-		refreshBatch(c, ids, keyFn, fetchFn)
+		c.refreshBatch(ids, keyFn, fetchFn)
 		return
 	}
 
@@ -30,7 +30,7 @@ func bufferBatchRefresh[T any](c *Client, ids []string, keyFn KeyFn, fetchFn Bat
 
 		// These IDs are the size we want, so we'll refresh them immediately.
 		safeGo(func() {
-			refreshBatch(c, idsToRefresh, keyFn, fetchFn)
+			c.refreshBatch(idsToRefresh, keyFn, fetchFn)
 		})
 
 		// We'll continue to process the remaining IDs recursively.
@@ -88,7 +88,7 @@ func bufferBatchRefresh[T any](c *Client, ids []string, keyFn KeyFn, fetchFn Bat
 				c.batchMutex.Unlock()
 
 				safeGo(func() {
-					refreshBatch(c, permIDs, keyFn, fetchFn)
+					c.refreshBatch(permIDs, keyFn, fetchFn)
 				})
 				return
 
@@ -122,7 +122,7 @@ func bufferBatchRefresh[T any](c *Client, ids []string, keyFn KeyFn, fetchFn Bat
 
 				// Refresh the first batch of IDs immediately.
 				safeGo(func() {
-					refreshBatch(c, idsToRefresh, keyFn, fetchFn)
+					c.refreshBatch(idsToRefresh, keyFn, fetchFn)
 				})
 
 				// If we exceeded the batch size, we'll continue to process the remaining IDs recursively.

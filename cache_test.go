@@ -39,10 +39,10 @@ func TestShardDistribution(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			recorder := newTestMetricsRecorder(tc.numShards)
-			client := sturdyc.New(tc.capacity, tc.numShards, time.Hour, 5, sturdyc.WithMetrics(recorder))
+			c := sturdyc.New[string](tc.capacity, tc.numShards, time.Hour, 5, sturdyc.WithMetrics(recorder))
 			for i := 0; i < tc.capacity; i++ {
 				key := randKey(tc.keyLength)
-				sturdyc.Set(client, key, "value")
+				c.Set(key, "value")
 			}
 			recorder.validateShardDistribution(t, tc.tolerancePercentage)
 		})
@@ -58,7 +58,7 @@ func TestTimeBasedEviction(t *testing.T) {
 	evictionInterval := time.Second
 	clock := sturdyc.NewTestClock(time.Now())
 	metricRecorder := newTestMetricsRecorder(numShards)
-	client := sturdyc.New(
+	c := sturdyc.New[string](
 		capacity,
 		numShards,
 		ttl,
@@ -69,7 +69,7 @@ func TestTimeBasedEviction(t *testing.T) {
 	)
 
 	for i := 0; i < capacity; i++ {
-		sturdyc.Set(client, randKey(12), "value")
+		c.Set(randKey(12), "value")
 	}
 
 	// Expire all entries.
@@ -137,7 +137,7 @@ func TestForcedEvictions(t *testing.T) {
 			t.Parallel()
 
 			recorder := newTestMetricsRecorder(tc.numShards)
-			client := sturdyc.New(tc.capacity,
+			c := sturdyc.New[string](tc.capacity,
 				tc.numShards,
 				time.Hour,
 				tc.evictionPercentage,
@@ -147,13 +147,13 @@ func TestForcedEvictions(t *testing.T) {
 			// Start by filling the sturdyc.
 			for i := 0; i < tc.capacity; i++ {
 				key := randKey(12)
-				sturdyc.Set(client, key, "value")
+				c.Set(key, "value")
 			}
 
 			// Next, we'll write to the cache to force evictions.
 			for i := 0; i < tc.writes; i++ {
 				key := randKey(12)
-				sturdyc.Set(client, key, "value")
+				c.Set(key, "value")
 			}
 
 			if recorder.forcedEvictions < tc.minEvictions || recorder.forcedEvictions > tc.maxEvictions {
@@ -175,7 +175,7 @@ func TestDisablingForcedEvictionMakesSetANoop(t *testing.T) {
 	// Setting the eviction percentage to 0 should disable forced evictions.
 	evictionpercentage := 0
 	metricRecorder := newTestMetricsRecorder(numShards)
-	c := sturdyc.New(
+	c := sturdyc.New[string](
 		capacity,
 		numShards,
 		ttl,
@@ -184,7 +184,7 @@ func TestDisablingForcedEvictionMakesSetANoop(t *testing.T) {
 	)
 
 	for i := 0; i < capacity*10; i++ {
-		sturdyc.Set(c, randKey(12), "value")
+		c.Set(randKey(12), "value")
 	}
 
 	metricRecorder.Lock()

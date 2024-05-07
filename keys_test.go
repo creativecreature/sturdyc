@@ -12,22 +12,22 @@ func TestTimeBasedKeys(t *testing.T) {
 	t.Parallel()
 
 	timeValue := time.Now()
-	regularTimeClient := sturdyc.New(100, 1, time.Hour, 5)
+	regularTimeClient := sturdyc.New[any](100, 1, time.Hour, 5)
 
 	clientSecondClock := sturdyc.NewTestClock(time.Now().Truncate(time.Second))
-	relativeTimeClientSecond := sturdyc.New(100, 1, time.Hour, 5,
+	relativeTimeClientSecond := sturdyc.New[any](100, 1, time.Hour, 5,
 		sturdyc.WithRelativeTimeKeyFormat(time.Second),
 		sturdyc.WithClock(clientSecondClock),
 	)
 
 	clientMinuteClock := sturdyc.NewTestClock(time.Now().Truncate(time.Minute))
-	relativeTimeClientMinute := sturdyc.New(100, 1, time.Hour, 5,
+	relativeTimeClientMinute := sturdyc.New[any](100, 1, time.Hour, 5,
 		sturdyc.WithRelativeTimeKeyFormat(time.Minute),
 		sturdyc.WithClock(clientMinuteClock),
 	)
 
 	clientHourClock := sturdyc.NewTestClock(time.Now().Truncate(time.Hour))
-	relativeTimeClientHour := sturdyc.New(100, 1, time.Hour, 5,
+	relativeTimeClientHour := sturdyc.New[any](100, 1, time.Hour, 5,
 		sturdyc.WithRelativeTimeKeyFormat(time.Hour),
 		sturdyc.WithClock(clientHourClock),
 	)
@@ -73,7 +73,7 @@ func TestTimeBasedKeys(t *testing.T) {
 func TestPermutatedRelativeTimeKeys(t *testing.T) {
 	t.Parallel()
 
-	client := sturdyc.New(100, 1, time.Hour, 5, sturdyc.WithRelativeTimeKeyFormat(time.Minute))
+	c := sturdyc.New[any](100, 1, time.Hour, 5, sturdyc.WithRelativeTimeKeyFormat(time.Minute))
 	prefix := "cache-key"
 	stringValue := "string"
 	intValue := 1
@@ -133,7 +133,7 @@ func TestPermutatedRelativeTimeKeys(t *testing.T) {
 
 	//nolint:lll // This is a test case, we want to keep the line length.
 	want := "cache-key-string-string-nil-1-1-nil-string1,string2-nil-string1,string2-nil-1,2-nil-1,2-nil-true-true-nil-(-)1h00m00s-(+)1h30m00s-nil"
-	got := client.PermutatedKey(prefix, queryOne)
+	got := c.PermutatedKey(prefix, queryOne)
 
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)
@@ -143,7 +143,7 @@ func TestPermutatedRelativeTimeKeys(t *testing.T) {
 func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
 	t.Parallel()
 
-	client := sturdyc.New(100, 1, time.Hour, 5)
+	c := sturdyc.New[any](100, 1, time.Hour, 5)
 	type queryParams struct {
 		StringValues []string
 		IntValues    []int
@@ -154,7 +154,7 @@ func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
 	}
 
 	want := "cache-key-empty-empty"
-	got := client.PermutatedKey("cache-key", params)
+	got := c.PermutatedKey("cache-key", params)
 
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)
@@ -164,14 +164,14 @@ func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
 func TestPermutatedBatchKeyFn(t *testing.T) {
 	t.Parallel()
 
-	client := sturdyc.New(100, 1, time.Hour, 5)
+	c := sturdyc.New[any](100, 1, time.Hour, 5)
 	type queryParams struct {
 		IncludeUpcoming bool
 		// Note that limit isn't exported (lowercase), hence it should be omitted from the key.
 		limit int
 	}
 
-	cacheKeyFunc := client.PermutatedBatchKeyFn("cache-key", queryParams{
+	cacheKeyFunc := c.PermutatedBatchKeyFn("cache-key", queryParams{
 		IncludeUpcoming: true,
 		limit:           2,
 	})

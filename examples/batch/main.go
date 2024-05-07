@@ -12,17 +12,17 @@ import (
 )
 
 type API struct {
-	cacheClient *sturdyc.Client
+	*sturdyc.Client[string]
 }
 
-func NewAPI(c *sturdyc.Client) *API {
+func NewAPI(c *sturdyc.Client[string]) *API {
 	return &API{c}
 }
 
 func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, error) {
 	// We are going to pass the cache a key function that prefixes each id.
 	// This makes it possible to save the same id for different data sources.
-	cacheKeyFn := a.cacheClient.BatchKeyFn("some-prefix")
+	cacheKeyFn := a.BatchKeyFn("some-prefix")
 
 	// The fetchFn is only going to retrieve the IDs that are not in the cache.
 	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
@@ -37,7 +37,7 @@ func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, er
 		return response, nil
 	}
 
-	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 
 func main() {
@@ -60,7 +60,7 @@ func main() {
 	storeMisses := true
 
 	// Create a cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 	)
 

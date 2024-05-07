@@ -5,18 +5,18 @@ import (
 	"errors"
 )
 
-func refresh[T any](c *Client, key string, fetchFn FetchFn[T]) {
+func (c *Client[T]) refresh(key string, fetchFn FetchFn[T]) {
 	response, err := fetchFn(context.Background())
 	if err != nil {
 		if c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
-			c.set(key, response, true)
+			c.SetMissing(key, response, true)
 		}
 		return
 	}
-	c.set(key, response, false)
+	c.SetMissing(key, response, false)
 }
 
-func refreshBatch[T any](c *Client, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
+func (c *Client[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
 	if c.metricsRecorder != nil {
 		c.metricsRecorder.CacheBatchRefreshSize(len(ids))
 	}
@@ -28,7 +28,7 @@ func refreshBatch[T any](c *Client, ids []string, keyFn KeyFn, fetchFn BatchFetc
 
 	// Check if any of the records have been deleted at the data source.
 	for _, id := range ids {
-		_, okCache := c.get(keyFn(id))
+		_, okCache, _, _ := c.get(keyFn(id))
 		v, okResponse := response[id]
 
 		if okResponse {
@@ -40,12 +40,12 @@ func refreshBatch[T any](c *Client, ids []string, keyFn KeyFn, fetchFn BatchFetc
 		}
 
 		if c.storeMisses && !okResponse {
-			c.set(keyFn(id), v, true)
+			c.SetMissing(keyFn(id), v, true)
 		}
 	}
 
 	// Cache the refreshed records.
 	for id, record := range response {
-		c.set(keyFn(id), record, false)
+		c.SetMissing(keyFn(id), record, false)
 	}
 }

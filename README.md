@@ -1,4 +1,5 @@
 # `sturdyc`: a caching library for building sturdy systems
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/creativecreature/sturdyc.svg)](https://pkg.go.dev/github.com/creativecreature/sturdyc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/creativecreature/sturdyc/blob/master/LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/creativecreature/sturdyc)](https://goreportcard.com/report/github.com/creativecreature/sturdyc)
@@ -11,8 +12,10 @@ writes. The [xxhash](https://github.com/cespare/xxhash) algorithm is used for
 efficient key distribution. Evictions are performed per shard based on recency at
 O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
-It has all the functionality you would expect from a caching library, along with
-additional features designed to help you build robust applications, such as:
+It has all the functionality you would expect from a caching library, along
+with additional features designed to help you build performant and robust
+applications, such as:
+
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
 - [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
@@ -20,6 +23,7 @@ additional features designed to help you build robust applications, such as:
 - [**refresh buffering**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-buffering)
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
+- [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
 
 The package has great support for batchable data sources as it takes the
 response apart, and then caches each record individually based on the
@@ -30,29 +34,37 @@ gathered enough IDs
 
 Records can be configured to refresh either based on time or at a certain rate
 of requests. All refreshes occur in the background, ensuring that users never
-have to wait for a record to be updated, resulting in *very low latency*
-applications.
+have to wait for a record to be updated, resulting in _very low latency_
+applications while also allowing unused keys to expire.
 
 There are examples for all of these configurations further down this file!
 
 # Installing
+
 ```sh
 go get github.com/creativecreature/sturdyc
 ```
 
 # At a glance
-The package exports the following functions:
-- Use [`sturdyc.Set`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Set) to write a record to the cache.
-- Use [`sturdyc.SetMany`](https://pkg.go.dev/github.com/creativecreature/sturdyc#SetMany) to write multiple records to the cache.
-- Use [`sturdyc.Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Get) to get a record from the cache.
-- Use [`sturdyc.GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch) to have the cache fetch and store a record.
-- Use [`sturdyc.GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch) to have the cache fetch and store a batch of records.
-- Use [`sturdyc.Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Passthrough) to have the cache fetch and store a record.
-- Use [`sturdyc.PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#PassthroughBatch) to have the cache fetch and store a batch of records.
-- Use [`sturdyc.Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Size) to get the number of items in the cache.
 
-To utilize these functions, you will first have to set up a client to manage
-your configuration:
+The package exports the following functions:
+
+- Use [`Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Get) to get a record from the cache.
+- Use [`GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetFetch) to have the cache fetch and store a record.
+- Use [`GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetFetchBatch) to have the cache fetch and store a batch of records.
+- Use [`Set`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Set) to write a record to the cache.
+- Use [`SetMany`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.SetMany) to write multiple records to the cache.
+- Use [`Delete`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Delete) to delete a record from the cache.
+- Use [`Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Passthrough) to have the cache fetch and store a record.
+- Use [`PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PassthroughBatch) to have the cache fetch and store a batch of records.
+- Use [`Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Size) to get the number of items in the cache.
+- Use [`Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Size) to get the number of items in the cache.
+- Use [`PermutatedKey`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PermutatedKey) to create a permutated cache key.
+- Use [`PermutatedBatchKeyFn`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PermutatedBatchKey) to create a permutated cache key for every record in a batch.
+- Use [`BatchKeyFn`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.BatchKeyFn) to create a cache key for every record in a batch.
+
+To utilize these functions, you will first have to set up a cache client to
+manage your configuration:
 
 ```go
 func main() {
@@ -83,9 +95,10 @@ func main() {
 }
 ```
 
-Next, we'll look at some of the more *advanced features*.
+Next, we'll look at some of the more _advanced features_.
 
 # Stampede protection
+
 Cache stampedes (also known as thundering herd) occur when many requests for a
 particular piece of data (which has just expired or been evicted from the
 cache) come in at once. This can cause all requests to fetch the data
@@ -106,7 +119,7 @@ func main() {
 	storeMisses := false
 
 	// Create a cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 	)
 }
@@ -121,10 +134,10 @@ To demonstrate this, we can create a simple API client:
 
 ```go
 type API struct {
-	cacheClient *sturdyc.Client
+	*sturdyc.Client[string]
 }
 
-func NewAPI(c *sturdyc.Client) *API {
+func NewAPI(c *sturdyc.Client[string]) *API {
 	return &API{c}
 }
 
@@ -134,7 +147,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		log.Printf("Fetching value for key: %s\n", key)
 		return "value", nil
 	}
-	return sturdyc.GetFetch(ctx, a.cacheClient, key, fetchFn)
+	return a.GetFetch(ctx, key, fetchFn)
 }
 ```
 
@@ -145,7 +158,7 @@ func main() {
 	// ...
 
 	// Create a cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 	)
 
@@ -184,6 +197,7 @@ go run .
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/stampede)
 
 # Non-existent records
+
 Another factor to consider is non-existent keys. It could be an ID that has
 been added manually to a CMS with a typo that leads to no data being returned
 from the upstream source. This can significantly increase our systems latency,
@@ -204,7 +218,7 @@ func main() {
 	storeMisses := true
 
 	// Create a cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 	)
 
@@ -226,20 +240,17 @@ func main() {
 ```
 
 Next, we'll modify the API client to return the `ErrStoreMissingRecord` error
-for the first *3* calls. This error instructs the cache to store it as a missing
+for the first _3_ calls. This error instructs the cache to store it as a missing
 record:
 
 ```go
 type API struct {
-	count       int
-	cacheClient *sturdyc.Client
+	*sturdyc.Client[string]
+	count int
 }
 
-func NewAPI(c *sturdyc.Client) *API {
-	return &API{
-		count:       0,
-		cacheClient: c,
-	}
+func NewAPI(c *sturdyc.Client[string]) *API {
+	return &API{c, 0}
 }
 
 func (a *API) Get(ctx context.Context, key string) (string, error) {
@@ -251,7 +262,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		}
 		return "value", nil
 	}
-	return sturdyc.GetFetch(ctx, a.cacheClient, key, fetchFn)
+	return a.GetFetch(ctx, key, fetchFn)
 }
 ```
 
@@ -296,6 +307,7 @@ refreshes and then transitions into having a value:
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/missing)
 
 # Batch endpoints
+
 One challenge with caching batchable endpoints is that you have to find a way
 to reduce the number of keys. To illustrate, let's say that we have 10 000
 records, and an endpoint for fetching them that allows for batches of 20.
@@ -325,17 +337,17 @@ we'll start with the API client:
 
 ```go
 type API struct {
-	cacheClient *sturdyc.Client
+	*sturdyc.Client[string]
 }
 
-func NewAPI(c *sturdyc.Client) *API {
+func NewAPI(c *sturdyc.Client[string]) *API {
 	return &API{c}
 }
 
 func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, error) {
 	// We are going to pass the cache a key function that prefixes each id.
 	// This makes it possible to save the same id for different data sources.
-	cacheKeyFn := a.cacheClient.BatchKeyFn("some-prefix")
+	cacheKeyFn := a.BatchKeyFn("some-prefix")
 
 	// The fetchFn is only going to retrieve the IDs that are not in the cache.
 	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
@@ -350,7 +362,7 @@ func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, er
 		return response, nil
 	}
 
-	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 ```
 
@@ -409,6 +421,7 @@ batch looks like:
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/batch)
 
 # Cache key permutations
+
 If you're attempting to cache data from an upstream system, the ID alone may be
 insufficient to uniquely identify the record in your cache. The endpoint you're
 calling might accept a variety of options that transform the data in different
@@ -425,20 +438,18 @@ type OrderOptions struct {
 }
 
 type OrderAPI struct {
-	cacheClient *sturdyc.Client
+	*sturdyc.Client[string]
 }
 
-func NewOrderAPI(client *sturdyc.Client) *OrderAPI {
-	return &OrderAPI{
-		cacheClient: client,
-	}
+func NewOrderAPI(c *sturdyc.Client[string]) *OrderAPI {
+	return &OrderAPI{c}
 }
 
 func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOptions) (map[string]string, error) {
 	// We use the  PermutedBatchKeyFn when an ID isn't enough to uniquely identify a
 	// record. The cache is going to store each id once per set of options. In a more
 	// realistic scenario, the opts would be query params or arguments to a DB query.
-	cacheKeyFn := a.cacheClient.PermutatedBatchKeyFn("key", opts)
+	cacheKeyFn := a.PermutatedBatchKeyFn("key", opts)
 
 	// We'll create a fetchFn with a closure that captures the options. For this
 	// simple example, it logs and returns the status for each order, but you could
@@ -451,7 +462,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 		}
 		return response, nil
 	}
-	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 ```
 
@@ -467,7 +478,7 @@ func main() {
 	// ...
 
 	// Create a new cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 	)
 
@@ -489,14 +500,15 @@ func main() {
 }
 ```
 
- At this point, the cache has stored each record individually for each option set:
- - FEDEX-2024-04-06-id1
- - DHL-2024-04-07-id1
- - UPS-2024-04-08-id1
- - etc..
+At this point, the cache has stored each record individually for each option set:
 
- Next, we'll add a sleep to make sure that all of the records are due for a
- refresh, and then request the ids individually for each set of options:
+- FEDEX-2024-04-06-id1
+- DHL-2024-04-07-id1
+- UPS-2024-04-08-id1
+- etc..
+
+Next, we'll add a sleep to make sure that all of the records are due for a
+refresh, and then request the ids individually for each set of options:
 
 ```go
 func main() {
@@ -541,10 +553,11 @@ go run .
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/permutations)
 
 # Refresh buffering
+
 As seen in the example above, we're not really utilizing the fact that the
 endpoint is batchable when we're performing the refreshes.
 
-To make this more efficient, we can enable the *refresh buffering*
+To make this more efficient, we can enable the _refresh buffering_
 functionality. Internally, the cache is going to create a buffer for each
 permutation of our options. It is then going to collect ids until it reaches a
 certain size, or exceeds a time threshold.
@@ -562,7 +575,7 @@ func main() {
 	batchBufferTimeout := time.Second * 30
 
 	// Create a new cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 	)
@@ -589,32 +602,30 @@ go run .
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/buffering)
 
 # Passthrough
+
 Time-based refreshes work really well for most use cases. However, there are
 scenarios where you might want to allow a certain amount of traffic to hit the
 underlying data source. For example, you might achieve a 99.99% cache hit rate,
-and even though you refresh the data every 1-2 seconds, it still only amounts
-to a handful of requests. This could cause the other system to scale down too
-much
+and even though you refresh the data every 1-2 seconds, it only amounts to a
+handful of requests. This could cause the other system to scale down too much.
 
-To solve this problem, `sturdyc` provides you with `sturdyc.Passthrough` and
-`sturdyc.PassthroughBatch`. These functions are functionally equivalent to
-`sturdyc.GetFetch` and `sturdyc.GetFetchBatch`, except they allow a certain
+To solve this problem, `sturdyc` provides you with `client.Passthrough` and
+`client.PassthroughBatch`. These functions are functionally equivalent to
+`client.GetFetch` and `client.GetFetchBatch`, except they allow a certain
 percentage of requests through rather than allowing a request through every x
 milliseconds/seconds/minutes/hours.
 
 The passthroughs will still be performed in the background, which means that
 your application will maintain low latency response times. Moreover, if the
-underlying system goes down, `sturdyc.Passthrough` and
-`sturdyc.PassthroughBatch` will still be able to serve stale data until the
-record's TTL expires.
-
+underlying system goes down, `client.Passthrough` and `client.PassthroughBatch`
+will still be able to serve stale data until the record's TTL expires.
 
 ```go
 capacity := 5
 numShards := 2
 ttl := time.Minute
 evictionPercentage := 10
-c := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
     // Allow 50% of the requests to pass-through. Default is 100%.
     sturdyc.WithPassthroughPercentage(50),
     // Buffer the batchable pass-throughs. Default is false.
@@ -626,7 +637,9 @@ batchRes, batchErr := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("it
 ```
 
 # Custom metrics
+
 The cache can be configured to report custom metrics for:
+
 - Size of the cache
 - Cache hits
 - Cache misses
@@ -654,7 +667,7 @@ type MetricsRecorder interface {
 and pass it as an option when you create the client:
 
 ```go
-cache := sturdyc.New(
+cache := sturdyc.New[any](
     cacheSize,
     shardSize,
     cacheTTL,
@@ -672,3 +685,69 @@ Below are a few images where these metrics have been visualized in Grafana:
 <img width="941" alt="Screenshot 2024-05-04 at 12 38 04" src="https://github.com/creativecreature/sturdyc/assets/12787673/b1359867-f1ef-4a09-8c75-d7d2360726f1">
 
 <img width="940" alt="Screenshot 2024-05-04 at 12 38 20" src="https://github.com/creativecreature/sturdyc/assets/12787673/de7f00ee-b14d-443b-b69e-91e19665c252">
+
+# Generics
+
+There are scenarios, where you might want to use the same cache for a data
+source that could return multiples types. Personally, I tend to create caches
+based on how frequently the data needs to be refreshed. I'll often have one
+transient cache which refreshes the data every 2-5 milliseconds. Hence, I'll
+use `any` as the type:
+
+```go
+	cacheClient := sturdyc.New[any](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithRefreshBuffering(10, time.Second*15),
+	)
+```
+
+However, if this data source has more than a handful of types, the type
+conversions may quickly feel like too much boilerplate. If that is the case,
+you can use any of package level functions that performs these conversions for
+you:
+
+- [`GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch)
+- [`GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch)
+- [`Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Passthrough)
+- [`PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#PassthroughBatch)
+
+If any of the conversions fail, you'll get a [`ErrInvalidType`](https://pkg.go.dev/github.com/creativecreature/sturdyc#pkg-variables) error.
+
+Below is an example of what an API client that uses these functions might look
+like:
+
+```go
+type OrderAPI struct {
+	cacheClient *sturdyc.Client[any]
+}
+
+func NewOrderAPI(c *sturdyc.Client[any]) *OrderAPI {
+	return &OrderAPI{cacheClient: c}
+}
+
+func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string) (map[string]string, error) {
+	cacheKeyFn := a.cacheClient.BatchKeyFn("order-status")
+	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
+		response := make(map[string]string, len(ids))
+		for _, id := range cacheMisses {
+			response[id] = "Order status: pending"
+		}
+		return response, nil
+	}
+	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+}
+
+func (a *OrderAPI) DeliveryTime(ctx context.Context, ids []string) (map[string]time.Time, error) {
+	cacheKeyFn := a.cacheClient.BatchKeyFn("delivery-time")
+	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]time.Time, error) {
+		response := make(map[string]time.Time, len(ids))
+		for _, id := range cacheMisses {
+			response[id] = time.Now()
+		}
+		return response, nil
+	}
+	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+}
+```
+
+The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/generics)

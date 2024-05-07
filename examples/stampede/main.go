@@ -9,10 +9,10 @@ import (
 )
 
 type API struct {
-	cacheClient *sturdyc.Client
+	*sturdyc.Client[string]
 }
 
-func NewAPI(c *sturdyc.Client) *API {
+func NewAPI(c *sturdyc.Client[string]) *API {
 	return &API{c}
 }
 
@@ -22,7 +22,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		log.Printf("Fetching value for key: %s\n", key)
 		return "value", nil
 	}
-	return sturdyc.GetFetch(ctx, a.cacheClient, key, fetchFn)
+	return a.GetFetch(ctx, key, fetchFn)
 }
 
 func main() {
@@ -52,7 +52,7 @@ func main() {
 	storeMisses := true
 
 	// Create a cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage,
+	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
 	)
 

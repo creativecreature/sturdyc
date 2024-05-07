@@ -2,6 +2,8 @@ package sturdyc
 
 import "fmt"
 
+// safeGo is a helper that prevents panics in any of the goroutines
+// that are running in the background from crashing the process.
 func safeGo(fn func()) {
 	go func() {
 		defer func() {
