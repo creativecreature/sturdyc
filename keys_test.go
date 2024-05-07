@@ -201,4 +201,11 @@ func TestTimePointers(t *testing.T) {
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)
 	}
+
+	empty := time.Time{}
+	got = cache.PermutatedKey("key", opts{Time: &empty})
+	want = "key-empty-time"
+	if got != want {
+		t.Errorf("got: %s wanted: %s", got, want)
+	}
 }
