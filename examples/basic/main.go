@@ -22,7 +22,6 @@ func main() {
 	cacheClient := sturdyc.New[int](capacity, numShards, ttl, evictionPercentage)
 
 	cacheClient.Set("key1", 99)
-
 	log.Println(cacheClient.Size())
 	log.Println(cacheClient.Get("key1"))
 

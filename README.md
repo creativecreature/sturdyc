@@ -67,32 +67,26 @@ To utilize these functions, you will first have to set up a cache client to
 manage your configuration:
 
 ```go
-func main() {
 	// Maximum number of entries in the cache.
 	capacity := 10000
-	// Number of shards to use.
+	// Number of shards to use for the sturdyc.
 	numShards := 10
 	// Time-to-live for cache entries.
 	ttl := 2 * time.Hour
 	// Percentage of entries to evict when the cache is full. Setting this
-	// to 0 will make set a no-op when the cache has reached its capacity.
-	// Expired records are evicted continiously by a background job.
+	// to 0 will make set a no-op if the cache has reached its capacity.
 	evictionPercentage := 10
 
 	// Create a cache client with the specified configuration.
-	cacheClient := sturdyc.New(capacity, numShards, ttl, evictionPercentage)
+	cacheClient := sturdyc.New[int](capacity, numShards, ttl, evictionPercentage)
 
-	// We can then use the client to store and retrieve values.
-	sturdyc.Set(cacheClient, "key1", "value")
-	if val, ok := sturdyc.Get[string](cacheClient, "key1"); ok {
-		log.Println(val) // Prints "value"
-	}
+	cacheClient.Set("key1", 99)
+	log.Println(cacheClient.Size())
+	log.Println(cacheClient.Get("key1"))
 
-	sturdyc.Set(cacheClient, "key2", 1)
-	if val, ok := sturdyc.Get[int](cacheClient, "key2"); ok {
-		log.Println(val) // Prints 1
-	}
-}
+	cacheClient.Delete("key1")
+	log.Println(cacheClient.Size())
+	log.Println(cacheClient.Get("key1"))
 ```
 
 Next, we'll look at some of the more _advanced features_.
