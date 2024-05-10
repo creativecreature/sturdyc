@@ -43,7 +43,11 @@ applications while also allowing unused keys to expire.
 We have been running this package in production for a few months, and seen great
 improvements in our systems latency:
 
-<TODO IMAGE>
+
+
+<img width="1554" alt="Screenshot 2024-05-10 at 10 15 18" src="https://github.com/creativecreature/sturdyc/assets/12787673/adad1d4c-e966-4db1-969a-eda4fd75653a">
+
+
 
 In addition to this, we've also seen that the number of outgoing requests we
 make has decreased by ~90%. This has helped us to significantly reduce our cost
