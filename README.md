@@ -13,7 +13,7 @@ efficient key distribution. Evictions are performed per shard based on recency a
 O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
 It has all the functionality you would expect from a caching library, along
-with additional features designed to help you build performant and robust
+with additional features designed to help you build _performant_ and _robust_
 applications. There are examples further down in this document that covers the
 entire API. I encourage you to read through these examples in **the order they
 appear**. Most of them build on each other, and many share configurations. Here
