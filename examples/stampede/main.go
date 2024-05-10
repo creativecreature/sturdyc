@@ -17,7 +17,9 @@ func NewAPI(c *sturdyc.Client[string]) *API {
 }
 
 func (a *API) Get(ctx context.Context, key string) (string, error) {
-	// This could be a call to a rate limited service, a database query, etc.
+	// This could be an API call, a database query, etc. The only requirement is
+	// that the function adheres to the `sturdyc.FetchFn` signature. Remember
+	// that you can use closures to capture additional values.
 	fetchFn := func(_ context.Context) (string, error) {
 		log.Printf("Fetching value for key: %s\n", key)
 		return "value", nil
@@ -42,14 +44,18 @@ func main() {
 	// ===========================================================
 	// =================== Stampede protection ===================
 	// ===========================================================
-	// Set a minimum and maximum refresh delay for the sturdyc. This is
-	// used to spread out the refreshes for entries evenly over time.
+	// Set a minimum and maximum refresh delay for the record. This is
+	// used to spread out the refreshes for our entries evenly over time.
+	// We don't want our outgoing requests to look like a comb.
 	minRefreshDelay := time.Millisecond * 10
 	maxRefreshDelay := time.Millisecond * 30
-	// The base for exponential backoff when retrying a refresh.
+	// The base used for exponential backoff when retrying a refresh. Most of the time, we perform
+	// refreshes well in advance of the records expiry time. Hence, we can help a system that is
+	// having trouble to get back on its feet by making fewer refreshes. Once we receive a
+	// successful response, the refreshes return to their original frequency.
 	retryBaseDelay := time.Millisecond * 10
 	// NOTE: Ignore this for now, it will be shown in the next example.
-	storeMisses := true
+	storeMisses := false
 
 	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
@@ -65,7 +71,11 @@ func main() {
 	// goroutines, the API call frequency will maintain this variability,
 	// ensuring we avoid overloading the API with requests.
 	for i := 0; i < 100; i++ {
-		val, _ := api.Get(context.Background(), "key")
+		val, err := api.Get(context.Background(), "key")
+		if err != nil {
+			log.Println("Failed to  retrieve the record from the cache.")
+			continue
+		}
 		log.Printf("Value: %s\n", val)
 		time.Sleep(minRefreshDelay)
 	}
