@@ -15,9 +15,9 @@ O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quicksele
 It has all the functionality you would expect from a caching library, along
 with additional features designed to help you build performant and robust
 applications. There are examples further down in this document that covers the
-entire API. I encourage you to read through these examples **in the order they
+entire API. I encourage you to read through these examples in **the order they
 appear**. Most of them build on each other, and many share configurations. Here
-is a brief overview with anchor links:
+is a brief overview of what the examples are going to cover:
 
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
@@ -40,18 +40,15 @@ of requests. All refreshes occur in the background, ensuring that users never
 have to wait for a record to be updated, resulting in _very low latency_
 applications while also allowing unused keys to expire.
 
-We have been running this package in production for a few months, and seen great
-improvements in our systems latency:
+Below is a screenshot showing the latency improvements we've observed after
+replacing our old cache with this package:
 
-
-
+&nbsp;
 <img width="1554" alt="Screenshot 2024-05-10 at 10 15 18" src="https://github.com/creativecreature/sturdyc/assets/12787673/adad1d4c-e966-4db1-969a-eda4fd75653a">
+&nbsp;
 
-
-
-In addition to this, we've also seen that the number of outgoing requests we
-make has decreased by ~90%. This has helped us to significantly reduce our cost
-base.
+In addition to this, we've also seen that our number of outgoing requests has
+decreased by more than 90%.
 
 # Installing
 
