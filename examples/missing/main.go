@@ -20,12 +20,12 @@ func NewAPI(c *sturdyc.Client[string]) *API {
 
 func (a *API) Get(ctx context.Context, key string) (string, error) {
 	fetchFn := func(_ context.Context) (string, error) {
-		log.Printf("Fetching value for key: %s\n", key)
 		a.count++
-		if a.count < 3 {
-			return "", sturdyc.ErrStoreMissingRecord
+		log.Printf("Fetching value for key: %s\n", key)
+		if a.count > 3 {
+			return "value", nil
 		}
-		return "value", nil
+		return "", sturdyc.ErrStoreMissingRecord
 	}
 	return a.GetFetch(ctx, key, fetchFn)
 }

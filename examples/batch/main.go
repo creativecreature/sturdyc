@@ -73,10 +73,11 @@ func main() {
 	api.GetBatch(context.Background(), ids)
 	log.Println("Seed completed")
 
-	// Each record has been cached individually. To illustrate this, we can keep
-	// fetching a random number of records from the original batch, plus a new ID.
-	// Looking at the logs, we'll see that the cache only fetches the id that
-	// wasn't in the original batch.
+	// To demonstrate that the records have been cached individually, we can continue
+	// fetching a random subset of records from the original batch, plus a new
+	// ID. By examining the logs, we should be able to see that the cache only
+	// fetches the ID that wasn't present in the original batch, indicating that
+	// the batch itself isn't part of the key.
 	for i := 1; i <= 100; i++ {
 		// Get N ids from the original batch.
 		recordsToFetch := rand.IntN(10) + 1
