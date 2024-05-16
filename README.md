@@ -14,10 +14,10 @@ O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quicksele
 
 It has all the functionality you would expect from a caching library, along
 with additional features designed to help you build _performant_ and _robust_
-applications. There are examples further down in this document that covers the
-entire API. I encourage you to read through these examples in **the order they
-appear**. Most of them build on each other, and many share configurations. Here
-is a brief overview of what the examples are going to cover:
+applications. There are examples further down the file that covers the entire
+API. I encourage you to **read these examples in the order they appear**. Most
+of them build on each other, and many share configurations. Here is a brief
+overview of what the examples are going to cover:
 
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
@@ -28,17 +28,20 @@ is a brief overview of what the examples are going to cover:
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
 - [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
 
-The package has great support for batchable data sources as it takes the
-response apart, and then caches each record individually based on the
-permutations of the options with which it was fetched. It can also
-significantly reduce the traffic to the underlying data sources by creating a
-buffer for each unique option set, and then delaying the refreshes until it has
-gathered enough IDs
+One thing that makes this package unique is that it has great support for
+batchable data sources. The cache takes responses apart, and then caches each
+record individually based on the permutations of the options with which it was
+fetched. The options could be query params, SQL filters, or anything else that
+could affect the data.
 
 Records can be configured to refresh either based on time or at a certain rate
 of requests. All refreshes occur in the background, ensuring that users never
 have to wait for a record to be updated, resulting in _very low latency_
 applications while also allowing unused keys to expire.
+
+The cache can also help you significantly reduce your traffic to the underlying
+data sources by creating buffers for each unique option set, and then delaying
+the refreshes of the data until it has gathered enough IDs.
 
 Below is a screenshot showing the latency improvements we've observed after
 replacing our old cache with this package:
@@ -210,7 +213,7 @@ go run .
 ```
 
 Now what if the record was deleted? Our cache might use a 2-hour-long TTL, and
-we definitely don't want to return a deleted record for that long.
+we definitely don't want to have a deleted record stay around for that long.
 
 However, if we were to modify our client so that it returns an error after the
 first request:
@@ -246,7 +249,7 @@ go run .
 ```
 
 We'll see that the exponential backoff kicks in, resulting in more iterations
-for every refresh. However, the value is still being printed:
+for every refresh, but the value is still being printed:
 
 ```sh
 2024/05/09 13:22:03 Fetching value for key: key
@@ -283,10 +286,12 @@ for every refresh. However, the value is still being printed:
 2024/05/09 13:22:04 Fetching value for key: key
 ```
 
-This is a bit tricky, because this is actually the functionality we want. If an
+This is a bit tricky because this is actually the functionality we want. If an
 upstream goes down, we want to be able to serve stale and reduce the frequency
 of the refreshes to make it easier for them to recover.
 
+How you determine if a record has been deleted is going to vary based on your
+data source it there is no way for the cache to figure this out automatically.
 Therefore, if a record is deleted, we'll have to explicitly inform the cache
 about it by returning a custom error:
 
@@ -301,10 +306,9 @@ fetchFn := func(_ context.Context) (string, error) {
 	}
 ```
 
-How you determine if a record has been deleted is going to vary based on your
-data source, but if we run this application again we'll see that it works, and
-that we're no longer getting any cache hits which leads to outgoing requests
-for every iteration:
+If we run this application again we'll see that it works, and that we're no
+longer getting any cache hits which leads to outgoing requests for every
+iteration:
 
 ```go
 2024/05/09 13:40:47 Fetching value for key: key
@@ -325,19 +329,19 @@ The entire example is available [here.](https://github.com/creativecreature/stur
 
 # Non-existent records
 
-In the example above, we can see that requesting keys that don't exist leads to
+In the example above, we can see that asking for keys that don't exist leads to
 a continuous stream of outgoing requests, as we're never able to get a cache
-hit and serve from memory. This is going to significantly increase our system's
-latency.
+hit and serve from memory. If this happens frequently, it's going to
+significantly increase our system's latency.
 
 The reasons why someone might request IDs that don't exist can vary. It could
 be due to a faulty CMS configuration, or perhaps it's caused by a slow
 ingestion process where it takes time for a new entity to propagate through a
-distributed system. egardless, this will negatively impact our systems
+distributed system. Regardless, this will negatively impact our systems
 performance.
 
 To address this issue, we can instruct the cache to store these IDs as missing
-records. Missing records are refreshed at the same frequency as 'regular'
+records. Missing records are refreshed at the same frequency as regular
 records. Hence, if an ID is continuously requested, and the upstream eventually
 returns a valid response, the record will no longer be marked by the cache as
 missing.
@@ -572,12 +576,11 @@ curl https://movie-api/movies?ids=1,2,3&filterUpcoming=false
 ```
 
 These responses might look completely different depending on whether any of
-these three movies are upcoming. Hence, it's important to store these records
-once for each unique option set.
+these movies are upcoming. Hence, it's important to store these records once
+for each unique option set.
 
-The best way to showcase this, is to create yet another simple API client. This
-client is going to be used to interact with a service for retrieving order
-statuses:
+The best way to showcase this, is to create a simple API client. This client is
+going to be used to interact with a service for retrieving order statuses:
 
 ```go
 type OrderOptions struct {
@@ -619,7 +622,7 @@ The main difference from the previous example is that we're using
 reflection to extract the names and values of every exported field in the opts
 struct, and then include them when it constructs the cache keys.
 
-To demonstrate this, we can write another small program:
+Now, let's try to use this client:
 
 ```go
 func main() {
@@ -704,16 +707,17 @@ The entire example is available [here.](https://github.com/creativecreature/stur
 
 # Refresh buffering
 
-As seen in the example above, we're getting the record store per permutation of
-our options. However, we're not really utilizing the fact that the endpoint is
+As seen in the example above, we're storing the records once for every set of
+options. However, we're not really utilizing the fact that the endpoint is
 batchable when we're performing the refreshes.
 
 To make this more efficient, we can enable the **refresh buffering**
-functionality. Internally, the cache is going to create a buffer for each
-permutation of our options. It is then going to collect ids until it reaches a
+functionality. Internally, the cache is going to create a buffer for every
+cache key permutation. It is then going to collect ids until it reaches a
 certain size, or exceeds a time-based threshold.
 
-The only change we have to make to the example above is to enable this feature:
+The only change we have to make to the previous example is to enable this
+feature:
 
 ```go
 func main() {
@@ -848,8 +852,8 @@ use `any` as the type:
 ```
 
 However, if this data source has more than a handful of types, the type
-conversions may quickly feel like too much boilerplate. If that is the case,
-you can use any of these package level functions:
+assertions may quickly feel like too much boilerplate. If that is the case, you
+can use any of these package level functions:
 
 - [`GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch)
 - [`GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch)
@@ -859,7 +863,7 @@ you can use any of these package level functions:
 They will perform the type conversions for you, and if any of them were to fail,
 you'll get a [`ErrInvalidType`](https://pkg.go.dev/github.com/creativecreature/sturdyc#pkg-variables) error.
 
-Below is an example of what an API client that uses these functions might look
+Below is an example of what an API client that uses these functions could look
 like:
 
 ```go
