@@ -63,10 +63,10 @@ type Client[T any] struct {
 	*Config
 	shards             []*shard[T]
 	nextShard          int
-	inflightMutex      sync.Mutex
-	inflightMap        map[string]*call[T]
-	inflightBatchMutex sync.Mutex
-	inflightBatchMap   map[string]*call[map[string]T]
+	inFlightMutex      sync.Mutex
+	inFlightMap        map[string]*inFlightCall[T]
+	inFlightBatchMutex sync.Mutex
+	inFlightBatchMap   map[string]*inFlightCall[map[string]T]
 }
 
 // New creates a new Client instance with the specified configuration.
@@ -78,8 +78,8 @@ type Client[T any] struct {
 // `opts` allows for additional configurations to be applied to the cache client.
 func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage int, opts ...Option) *Client[T] {
 	client := &Client[T]{
-		inflightMap:      make(map[string]*call[T]),
-		inflightBatchMap: make(map[string]*call[map[string]T]),
+		inFlightMap:      make(map[string]*inFlightCall[T]),
+		inFlightBatchMap: make(map[string]*inFlightCall[map[string]T]),
 	}
 
 	// Create a default configuration, and then apply the options.

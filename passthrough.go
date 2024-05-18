@@ -21,7 +21,7 @@ func (c *Client[T]) Passthrough(ctx context.Context, key string, fetchFn FetchFn
 		}
 		return value, nil
 	}
-	return fetchAndCache(ctx, c, key, fetchFn)
+	return callAndCache(ctx, c, key, fetchFn)
 }
 
 // Passthrough is a convenience function that performs type assertion on the result of client.Passthrough.
@@ -42,7 +42,7 @@ func (c *Client[T]) PassthroughBatch(ctx context.Context, ids []string, keyFn Ke
 	// If we have cache misses, we're going to perform an outgoing refresh
 	// regardless. We'll utilize this to perform a passthrough for all IDs.
 	if len(cacheMisses) > 0 {
-		res, err := fetchAndCacheBatch(ctx, c, ids, keyFn, fetchFn)
+		res, err := callAndCacheBatch(ctx, c, ids, keyFn, fetchFn)
 		if err != nil && len(cachedRecords) > 0 {
 			return cachedRecords, ErrOnlyCachedRecords
 		}

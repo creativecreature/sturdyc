@@ -2,158 +2,8 @@ package sturdyc
 
 import (
 	"context"
-	"errors"
 	"maps"
-	"sync"
 )
-
-type call[T any] struct {
-	sync.WaitGroup
-	val T
-	err error
-}
-
-func (c *Client[T]) finishCall(call *call[T], key string) {
-	call.Done()
-	c.inflightMutex.Lock()
-	delete(c.inflightMap, key)
-	c.inflightMutex.Unlock()
-}
-
-func (c *Client[T]) finishBatch(ids []string, keyFn KeyFn, call *call[map[string]T]) {
-	call.Done()
-	c.inflightBatchMutex.Lock()
-	for _, id := range ids {
-		delete(c.inflightBatchMap, keyFn(id))
-	}
-	c.inflightBatchMutex.Unlock()
-}
-
-func fetchAndCache[V, T any](ctx context.Context, c *Client[T], key string, fn FetchFn[V]) (V, error) {
-	c.inflightMutex.Lock()
-	if call, ok := c.inflightMap[key]; ok {
-		c.inflightMutex.Unlock()
-		call.Wait()
-		return unwrap[V, T](call.val, call.err)
-	}
-
-	call := new(call[T])
-	call.Add(1)
-	c.inflightMap[key] = call
-	c.inflightMutex.Unlock()
-
-	response, err := fn(ctx)
-	if err != nil && c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
-		c.SetMissing(key, *new(T), true)
-		call.err = ErrMissingRecord
-		c.finishCall(call, key)
-		return response, ErrMissingRecord
-	}
-
-	if err != nil {
-		call.err = err
-		c.finishCall(call, key)
-		return response, err
-	}
-
-	res, ok := any(response).(T)
-	if !ok {
-		call.err = ErrInvalidType
-		c.finishCall(call, key)
-		return response, ErrInvalidType
-	}
-
-	c.SetMissing(key, res, false)
-	call.val, call.err = res, nil
-	c.finishCall(call, key)
-
-	return response, nil
-}
-
-func fetchAndCacheBatch[V, T any](ctx context.Context, c *Client[T], allIDs []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
-	c.inflightBatchMutex.Lock()
-
-	// We need to keep track of the specific IDs we're after for a particular call.
-	callIDs := make(map[*call[map[string]T]][]string)
-	ids := make([]string, 0, len(allIDs))
-	for _, id := range allIDs {
-		if call, ok := c.inflightBatchMap[keyFn(id)]; ok {
-			callIDs[call] = append(callIDs[call], id)
-			continue
-		}
-		ids = append(ids, id)
-	}
-
-	if len(ids) > 0 {
-		call := new(call[map[string]T])
-		call.val = make(map[string]T, len(ids))
-		call.Add(1)
-
-		for _, id := range ids {
-			c.inflightBatchMap[keyFn(id)] = call
-			callIDs[call] = append(callIDs[call], id)
-		}
-
-		c.inflightBatchMutex.Unlock()
-		safeGo(func() {
-			response, err := fetchFn(ctx, ids)
-			if err != nil {
-				call.err = err
-				c.finishBatch(ids, keyFn, call)
-				return
-			}
-
-			// Check if we should store any of these IDs as a missing record.
-			if c.storeMisses && len(response) < len(ids) {
-				for _, id := range ids {
-					if _, ok := response[id]; !ok {
-						var zero T
-						c.SetMissing(keyFn(id), zero, true)
-					}
-				}
-			}
-
-			// Store the records in the cache.
-			for id, record := range response {
-				v, ok := any(record).(T)
-				if !ok {
-					continue
-				}
-				c.SetMissing(keyFn(id), v, false)
-				call.val[id] = v
-			}
-			c.finishBatch(ids, keyFn, call)
-		})
-	} else {
-		c.inflightBatchMutex.Unlock()
-	}
-
-	response := make(map[string]V, len(allIDs))
-	for call, callIDs := range callIDs {
-		call.Wait()
-		if call.err != nil {
-			return response, call.err
-		}
-
-		// Remember: we need to iterate through the values we have for this call.
-		// We might just need one ID, and it could be a batch of 100.
-		for _, id := range callIDs {
-			v, ok := call.val[id]
-			if !ok {
-				continue
-			}
-
-			if val, ok := any(v).(V); ok {
-				response[id] = val
-			} else {
-				// TODO: Think about this.
-				return response, ErrInvalidType
-			}
-		}
-	}
-
-	return response, nil
-}
 
 func (c *Client[T]) groupIDs(ids []string, keyFn KeyFn) (hits map[string]T, misses, refreshes []string) {
 	hits = make(map[string]T)
@@ -206,7 +56,7 @@ func (c *Client[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]
 		return value, nil
 	}
 
-	return fetchAndCache(ctx, c, key, fetchFn)
+	return callAndCache(ctx, c, key, fetchFn)
 }
 
 // GetFetch is a convenience function that performs type assertion on the result of client.GetFetch.
@@ -238,7 +88,7 @@ func (c *Client[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn
 		return cachedRecords, nil
 	}
 
-	response, err := fetchAndCacheBatch(ctx, c, cacheMisses, keyFn, fetchFn)
+	response, err := callAndCacheBatch(ctx, c, cacheMisses, keyFn, fetchFn)
 	if err != nil {
 		if len(cachedRecords) > 0 {
 			return cachedRecords, ErrOnlyCachedRecords
