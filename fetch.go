@@ -4,28 +4,75 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"sync"
 )
 
-func fetchAndCache[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
-	response, err := fetchFn(ctx)
+type call[T any] struct {
+	sync.WaitGroup
+	val T
+	err error
+}
 
+func (c *Client[T]) finishCall(call *call[T], key string) {
+	call.Done()
+	c.Lock()
+	delete(c.m, key)
+	c.Unlock()
+}
+
+func fetchAndCache[V, T any](ctx context.Context, c *Client[T], key string, fn FetchFn[V]) (V, error) {
+	c.Lock()
+	if call, ok := c.m[key]; ok {
+		c.Unlock()
+		call.Wait()
+		return unwrap[V, T](call.val, call.err)
+	}
+
+	call := new(call[T])
+	call.Add(1)
+	c.m[key] = call
+	c.Unlock()
+
+	response, err := fn(ctx)
 	if err != nil && c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
-		var zero T
-		c.SetMissing(key, zero, true)
+		c.SetMissing(key, *new(T), true)
+		call.err = ErrMissingRecord
+		c.finishCall(call, key)
 		return response, ErrMissingRecord
 	}
 
 	if err != nil {
+		call.err = err
+		c.finishCall(call, key)
 		return response, err
 	}
 
 	res, ok := any(response).(T)
 	if !ok {
+		call.err = ErrInvalidType
+		c.finishCall(call, key)
 		return response, ErrInvalidType
 	}
 
 	c.SetMissing(key, res, false)
+	call.val, call.err = res, nil
+	c.finishCall(call, key)
+
 	return response, nil
+}
+
+func fetchAndCacheBatchTwo[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
+	c.Lock()
+
+	inFlightIds := make([]string, 0, len(ids))
+	notInFlightIds := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := c.m[keyFn(id)]; ok {
+			inFlightIds = append(inFlightIds, id)
+			continue
+		}
+		notInFlightIds = append(notInFlightIds, id)
+	}
 }
 
 func fetchAndCacheBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
