@@ -64,8 +64,8 @@ type Client[T any] struct {
 	shards             []*shard[T]
 	nextShard          int
 	inFlightMutex      sync.Mutex
-	inFlightMap        map[string]*inFlightCall[T]
 	inFlightBatchMutex sync.Mutex
+	inFlightMap        map[string]*inFlightCall[T]
 	inFlightBatchMap   map[string]*inFlightCall[map[string]T]
 }
 
