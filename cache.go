@@ -60,11 +60,13 @@ type Config struct {
 
 // Client represents a cache client that can be used to store and retrieve values.
 type Client[T any] struct {
-	sync.Mutex
 	*Config
-	shards    []*shard[T]
-	nextShard int
-	m         map[string]*call[T]
+	shards             []*shard[T]
+	nextShard          int
+	inflightMutex      sync.Mutex
+	inflightMap        map[string]*call[T]
+	inflightBatchMutex sync.Mutex
+	inflightBatchMap   map[string]*call[map[string]T]
 }
 
 // New creates a new Client instance with the specified configuration.
@@ -75,7 +77,10 @@ type Client[T any] struct {
 // `evictionPercentage` Percentage of items to evict when the cache exceeds its capacity.
 // `opts` allows for additional configurations to be applied to the cache client.
 func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage int, opts ...Option) *Client[T] {
-	client := &Client[T]{m: make(map[string]*call[T])}
+	client := &Client[T]{
+		inflightMap:      make(map[string]*call[T]),
+		inflightBatchMap: make(map[string]*call[map[string]T]),
+	}
 
 	// Create a default configuration, and then apply the options.
 	cfg := &Config{

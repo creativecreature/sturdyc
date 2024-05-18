@@ -15,23 +15,32 @@ type call[T any] struct {
 
 func (c *Client[T]) finishCall(call *call[T], key string) {
 	call.Done()
-	c.Lock()
-	delete(c.m, key)
-	c.Unlock()
+	c.inflightMutex.Lock()
+	delete(c.inflightMap, key)
+	c.inflightMutex.Unlock()
+}
+
+func (c *Client[T]) finishBatch(ids []string, keyFn KeyFn, call *call[map[string]T]) {
+	call.Done()
+	c.inflightBatchMutex.Lock()
+	for _, id := range ids {
+		delete(c.inflightBatchMap, keyFn(id))
+	}
+	c.inflightBatchMutex.Unlock()
 }
 
 func fetchAndCache[V, T any](ctx context.Context, c *Client[T], key string, fn FetchFn[V]) (V, error) {
-	c.Lock()
-	if call, ok := c.m[key]; ok {
-		c.Unlock()
+	c.inflightMutex.Lock()
+	if call, ok := c.inflightMap[key]; ok {
+		c.inflightMutex.Unlock()
 		call.Wait()
 		return unwrap[V, T](call.val, call.err)
 	}
 
 	call := new(call[T])
 	call.Add(1)
-	c.m[key] = call
-	c.Unlock()
+	c.inflightMap[key] = call
+	c.inflightMutex.Unlock()
 
 	response, err := fn(ctx)
 	if err != nil && c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
@@ -61,43 +70,86 @@ func fetchAndCache[V, T any](ctx context.Context, c *Client[T], key string, fn F
 	return response, nil
 }
 
-func fetchAndCacheBatchTwo[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
-	c.Lock()
+func fetchAndCacheBatch[V, T any](ctx context.Context, c *Client[T], allIDs []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
+	c.inflightBatchMutex.Lock()
 
-	inFlightIds := make([]string, 0, len(ids))
-	notInFlightIds := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := c.m[keyFn(id)]; ok {
-			inFlightIds = append(inFlightIds, id)
+	// We need to keep track of the specific IDs we're after for a particular call.
+	callIDs := make(map[*call[map[string]T]][]string)
+	ids := make([]string, 0, len(allIDs))
+	for _, id := range allIDs {
+		if call, ok := c.inflightBatchMap[keyFn(id)]; ok {
+			callIDs[call] = append(callIDs[call], id)
 			continue
 		}
-		notInFlightIds = append(notInFlightIds, id)
-	}
-}
-
-func fetchAndCacheBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
-	response, err := fetchFn(ctx, ids)
-	if err != nil {
-		return response, err
+		ids = append(ids, id)
 	}
 
-	// Check if we should store any of these IDs as a missing record.
-	if c.storeMisses && len(response) < len(ids) {
+	if len(ids) > 0 {
+		call := new(call[map[string]T])
+		call.val = make(map[string]T, len(ids))
+		call.Add(1)
+
 		for _, id := range ids {
-			if _, ok := response[id]; !ok {
-				var zero T
-				c.SetMissing(keyFn(id), zero, true)
+			c.inflightBatchMap[keyFn(id)] = call
+			callIDs[call] = append(callIDs[call], id)
+		}
+
+		c.inflightBatchMutex.Unlock()
+		safeGo(func() {
+			response, err := fetchFn(ctx, ids)
+			if err != nil {
+				call.err = err
+				c.finishBatch(ids, keyFn, call)
+				return
+			}
+
+			// Check if we should store any of these IDs as a missing record.
+			if c.storeMisses && len(response) < len(ids) {
+				for _, id := range ids {
+					if _, ok := response[id]; !ok {
+						var zero T
+						c.SetMissing(keyFn(id), zero, true)
+					}
+				}
+			}
+
+			// Store the records in the cache.
+			for id, record := range response {
+				v, ok := any(record).(T)
+				if !ok {
+					continue
+				}
+				c.SetMissing(keyFn(id), v, false)
+				call.val[id] = v
+			}
+			c.finishBatch(ids, keyFn, call)
+		})
+	} else {
+		c.inflightBatchMutex.Unlock()
+	}
+
+	response := make(map[string]V, len(allIDs))
+	for call, callIDs := range callIDs {
+		call.Wait()
+		if call.err != nil {
+			return response, call.err
+		}
+
+		// Remember: we need to iterate through the values we have for this call.
+		// We might just need one ID, and it could be a batch of 100.
+		for _, id := range callIDs {
+			v, ok := call.val[id]
+			if !ok {
+				continue
+			}
+
+			if val, ok := any(v).(V); ok {
+				response[id] = val
+			} else {
+				// TODO: Think about this.
+				return response, ErrInvalidType
 			}
 		}
-	}
-
-	// Store the records in the cache.
-	for id, record := range response {
-		v, ok := any(record).(T)
-		if !ok {
-			continue
-		}
-		c.SetMissing(keyFn(id), v, false)
 	}
 
 	return response, nil
