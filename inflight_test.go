@@ -81,30 +81,38 @@ func TestBatchRequestsForMissingKeysGetDeduplicated(t *testing.T) {
 	evictionPercentage := 10
 	c := sturdyc.New[int](capacity, numShards, ttl, evictionPercentage)
 
-	// I'm going to start by creating three in-flight batches with 5 IDs each.
+	// I'm going to start by creating 10 in-flight batches with 10 IDs each (0-99).
 	var calls atomic.Int32
 	cond := sync.NewCond(&sync.Mutex{})
 	keyFn := c.BatchKeyFn("foo")
 
-	go func() {
-		c.GetFetchBatch(ctx, []string{"0", "1", "2", "3", "4"}, keyFn, createBatchFn(&calls, cond))
-	}()
-	go func() {
-		c.GetFetchBatch(ctx, []string{"5", "6", "7", "8", "9"}, keyFn, createBatchFn(&calls, cond))
-	}()
-	go func() {
-		c.GetFetchBatch(ctx, []string{"10", "11", "12", "13", "14"}, keyFn, createBatchFn(&calls, cond))
-	}()
+	for i := 0; i < 10; i++ {
+		go func() {
+			ids := make([]string, 0, 10)
+			for j := 0; j < 10; j++ {
+				ids = append(ids, strconv.Itoa(i*10+j))
+			}
+			c.GetFetchBatch(ctx, ids, keyFn, createBatchFn(&calls, cond))
+		}()
+	}
+	// We need to make sure that these batches are in-flight before we make any more requests.
+	time.Sleep(500 * time.Millisecond)
 
 	// Now, while these batches are in-flight, I'm going to create additional requests for the same IDs in a loop.
-	// On each iteration, I'm going to randomize two IDs between 1 and 15. This ensures that new requests are able
-	// to pick IDs from any of the three in-flight batches and merge them.
+	// On each iteration, I'm going to randomize five IDs between 0 and 99. This ensures that new requests are able
+	// to pick IDs from any of the ten in-flight batches, and then merge the response.
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func() {
 			// We are going to get a few duplicates here too which the cache should be able to handle.
-			ids := []string{strconv.Itoa(rand.IntN(14)), strconv.Itoa(rand.IntN(14))}
+			ids := []string{
+				strconv.Itoa(rand.IntN(99)),
+				strconv.Itoa(rand.IntN(99)),
+				strconv.Itoa(rand.IntN(99)),
+				strconv.Itoa(rand.IntN(99)),
+				strconv.Itoa(rand.IntN(99)),
+			}
 			res, err := c.GetFetchBatch(ctx, ids, keyFn, createBatchFn(&calls, cond))
 			if err != nil {
 				t.Errorf("expected no error got %v", err)
@@ -128,10 +136,15 @@ func TestBatchRequestsForMissingKeysGetDeduplicated(t *testing.T) {
 		}()
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	// Give the goroutines some time to start.
+	time.Sleep(500 * time.Millisecond)
+	// Broadcast the condition to let the in-flight batches complete.
 	cond.Broadcast()
+	// Wait for all of the responses to get asserted.
 	wg.Wait()
-	if got := calls.Load(); got != 3 {
-		t.Errorf("got %d calls; wanted 3", got)
+
+	// Assert that we only made 10 calls.
+	if got := calls.Load(); got != 10 {
+		t.Errorf("got %d calls; wanted 10", got)
 	}
 }

@@ -88,7 +88,8 @@ func (c *Client[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn
 		return cachedRecords, nil
 	}
 
-	response, err := callAndCacheBatch(ctx, c, cacheMisses, keyFn, fetchFn)
+	callBatchOpts := callBatchOpts[T, T]{ids: cacheMisses, keyFn: keyFn, fn: fetchFn}
+	response, err := callAndCacheBatch(ctx, c, callBatchOpts)
 	if err != nil {
 		if len(cachedRecords) > 0 {
 			return cachedRecords, ErrOnlyCachedRecords

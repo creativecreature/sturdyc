@@ -53,6 +53,43 @@ func (c *Client[T]) endErrorFlight(call *inFlightCall[T], key string, err error)
 	return err
 }
 
+type makeBatchCallOpts[T, V any] struct {
+	ids   []string
+	fn    BatchFetchFn[V]
+	keyFn KeyFn
+	call  *inFlightCall[map[string]T]
+}
+
+func makeBatchCall[T, V any](ctx context.Context, c *Client[T], opts makeBatchCallOpts[T, V]) {
+	response, err := opts.fn(ctx, opts.ids)
+	if err != nil {
+		opts.call.err = err
+		c.endBatchFlight(opts.ids, opts.keyFn, opts.call)
+		return
+	}
+
+	// Check if we should store any of these IDs as a missing record.
+	if c.storeMisses && len(response) < len(opts.ids) {
+		for _, id := range opts.ids {
+			if _, ok := response[id]; !ok {
+				var zero T
+				c.SetMissing(opts.keyFn(id), zero, true)
+			}
+		}
+	}
+
+	// Store the records in the cache.
+	for id, record := range response {
+		v, ok := any(record).(T)
+		if !ok {
+			continue
+		}
+		c.SetMissing(opts.keyFn(id), v, false)
+		opts.call.val[id] = v
+	}
+	c.endBatchFlight(opts.ids, opts.keyFn, opts.call)
+}
+
 func callAndCache[V, T any](ctx context.Context, c *Client[T], key string, fn FetchFn[V]) (V, error) {
 	c.inFlightMutex.Lock()
 	if call, ok := c.inFlightMap[key]; ok {
@@ -86,14 +123,20 @@ func callAndCache[V, T any](ctx context.Context, c *Client[T], key string, fn Fe
 	return response, nil
 }
 
-func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fn BatchFetchFn[V]) (map[string]V, error) {
+type callBatchOpts[T, V any] struct {
+	ids   []string
+	keyFn KeyFn
+	fn    BatchFetchFn[V]
+}
+
+func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], opts callBatchOpts[T, V]) (map[string]V, error) {
 	c.inFlightBatchMutex.Lock()
 
 	// We need to keep track of the specific IDs we're after for a particular call.
 	callIDs := make(map[*inFlightCall[map[string]T]][]string)
-	uniqueIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if call, ok := c.inFlightBatchMap[keyFn(id)]; ok {
+	uniqueIDs := make([]string, 0, len(opts.ids))
+	for _, id := range opts.ids {
+		if call, ok := c.inFlightBatchMap[opts.keyFn(id)]; ok {
 			callIDs[call] = append(callIDs[call], id)
 			continue
 		}
@@ -101,55 +144,33 @@ func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], ids []string
 	}
 
 	if len(uniqueIDs) > 0 {
-		call := c.newBatchFlight(uniqueIDs, keyFn)
+		call := c.newBatchFlight(uniqueIDs, opts.keyFn)
 		for _, id := range uniqueIDs {
-			c.inFlightBatchMap[keyFn(id)] = call
+			c.inFlightBatchMap[opts.keyFn(id)] = call
 			callIDs[call] = append(callIDs[call], id)
 		}
 
-		c.inFlightBatchMutex.Unlock()
 		safeGo(func() {
-			response, err := fn(ctx, uniqueIDs)
-			if err != nil {
-				call.err = err
-				c.endBatchFlight(uniqueIDs, keyFn, call)
-				return
+			batchCallOpts := makeBatchCallOpts[T, V]{
+				ids:   uniqueIDs,
+				fn:    opts.fn,
+				keyFn: opts.keyFn,
+				call:  call,
 			}
-
-			// Check if we should store any of these IDs as a missing record.
-			if c.storeMisses && len(response) < len(uniqueIDs) {
-				for _, id := range uniqueIDs {
-					if _, ok := response[id]; !ok {
-						var zero T
-						c.SetMissing(keyFn(id), zero, true)
-					}
-				}
-			}
-
-			// Store the records in the cache.
-			for id, record := range response {
-				v, ok := any(record).(T)
-				if !ok {
-					continue
-				}
-				c.SetMissing(keyFn(id), v, false)
-				call.val[id] = v
-			}
-			c.endBatchFlight(uniqueIDs, keyFn, call)
+			makeBatchCall(ctx, c, batchCallOpts)
 		})
-	} else {
-		c.inFlightBatchMutex.Unlock()
 	}
+	c.inFlightBatchMutex.Unlock()
 
-	response := make(map[string]V, len(ids))
+	response := make(map[string]V, len(opts.ids))
 	for call, callIDs := range callIDs {
 		call.Wait()
 		if call.err != nil {
 			return response, call.err
 		}
 
-		// Remember: we need to iterate through the values we have for
-		// this call. We might just need one ID in a batch of a hundred.
+		// Remember: we need to iterate through the values we have for this call.
+		// We might just need one ID and the batch could contain a hundred.
 		for _, id := range callIDs {
 			v, ok := call.val[id]
 			if !ok {
@@ -158,9 +179,9 @@ func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], ids []string
 
 			if val, ok := any(v).(V); ok {
 				response[id] = val
-			} else {
-				return response, ErrInvalidType
+				continue
 			}
+			return response, ErrInvalidType
 		}
 	}
 
