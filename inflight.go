@@ -159,7 +159,6 @@ func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], ids []string
 			if val, ok := any(v).(V); ok {
 				response[id] = val
 			} else {
-				// TODO: Think about this.
 				return response, ErrInvalidType
 			}
 		}
