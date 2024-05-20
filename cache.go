@@ -61,8 +61,12 @@ type Config struct {
 // Client represents a cache client that can be used to store and retrieve values.
 type Client[T any] struct {
 	*Config
-	shards    []*shard[T]
-	nextShard int
+	shards             []*shard[T]
+	nextShard          int
+	inFlightMutex      sync.Mutex
+	inFlightBatchMutex sync.Mutex
+	inFlightMap        map[string]*inFlightCall[T]
+	inFlightBatchMap   map[string]*inFlightCall[map[string]T]
 }
 
 // New creates a new Client instance with the specified configuration.
@@ -73,25 +77,25 @@ type Client[T any] struct {
 // `evictionPercentage` Percentage of items to evict when the cache exceeds its capacity.
 // `opts` allows for additional configurations to be applied to the cache client.
 func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage int, opts ...Option) *Client[T] {
-	// Create an emptu client and setup the default configuration.
-	client := &Client[T]{}
+	client := &Client[T]{
+		inFlightMap:      make(map[string]*inFlightCall[T]),
+		inFlightBatchMap: make(map[string]*inFlightCall[map[string]T]),
+	}
+
+	// Create a default configuration, and then apply the options.
 	cfg := &Config{
 		clock:                 NewClock(),
 		passthroughPercentage: 100,
 		evictionInterval:      ttl / time.Duration(numShards),
 		getSize:               client.Size,
 	}
-
 	// Apply the options to the configuration.
 	client.Config = cfg
 	for _, opt := range opts {
 		opt(cfg)
 	}
-
 	validateConfig(capacity, numShards, ttl, evictionPercentage, cfg)
 
-	// Next, we'll create the shards. It is important that
-	// we do this after we've applited the options.
 	shardSize := capacity / numShards
 	shards := make([]*shard[T], numShards)
 	for i := 0; i < numShards; i++ {

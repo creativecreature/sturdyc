@@ -2,8 +2,29 @@ package sturdyc
 
 import (
 	"context"
+	"errors"
 	"math/rand/v2"
 )
+
+func passthroughAndCache[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
+	response, err := fetchFn(ctx)
+	if err != nil && c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
+		c.SetMissing(key, *new(T), true)
+		return response, ErrMissingRecord
+	}
+
+	if err != nil {
+		return response, err
+	}
+
+	res, ok := any(response).(T)
+	if !ok {
+		return response, ErrInvalidType
+	}
+
+	c.SetMissing(key, res, false)
+	return response, nil
+}
 
 // Passthrough attempts to retrieve the id from the cache. If looking up the ID
 // results in a cache miss, it will fetch the record using the fetchFn. If the
@@ -21,13 +42,40 @@ func (c *Client[T]) Passthrough(ctx context.Context, key string, fetchFn FetchFn
 		}
 		return value, nil
 	}
-	return fetchAndCache(ctx, c, key, fetchFn)
+	return passthroughAndCache(ctx, c, key, fetchFn)
 }
 
 // Passthrough is a convenience function that performs type assertion on the result of client.Passthrough.
 func Passthrough[T, V any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
 	value, err := c.Passthrough(ctx, key, wrap[T](fetchFn))
 	return unwrap[V](value, err)
+}
+
+func passthroughAndCacheBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
+	response, err := fetchFn(ctx, ids)
+	if err != nil {
+		return response, err
+	}
+
+	// Check if we should store any of these IDs as a missing record.
+	if c.storeMisses && len(response) < len(ids) {
+		for _, id := range ids {
+			if _, ok := response[id]; !ok {
+				c.SetMissing(keyFn(id), *new(T), true)
+			}
+		}
+	}
+
+	// Store the records in the cache.
+	for id, record := range response {
+		v, ok := any(record).(T)
+		if !ok {
+			continue
+		}
+		c.SetMissing(keyFn(id), v, false)
+	}
+
+	return response, nil
 }
 
 // PassthroughBatch attempts to retrieve the ids from the cache. If looking up
@@ -42,7 +90,7 @@ func (c *Client[T]) PassthroughBatch(ctx context.Context, ids []string, keyFn Ke
 	// If we have cache misses, we're going to perform an outgoing refresh
 	// regardless. We'll utilize this to perform a passthrough for all IDs.
 	if len(cacheMisses) > 0 {
-		res, err := fetchAndCacheBatch(ctx, c, ids, keyFn, fetchFn)
+		res, err := passthroughAndCacheBatch(ctx, c, ids, keyFn, fetchFn)
 		if err != nil && len(cachedRecords) > 0 {
 			return cachedRecords, ErrOnlyCachedRecords
 		}
