@@ -53,12 +53,11 @@ func main() {
 	maxRefreshDelay := time.Millisecond * 30
 	// The base for exponential backoff when retrying a refresh.
 	retryBaseDelay := time.Millisecond * 10
-	// Tell the cache to store missing records.
-	storeMisses := true
 
 	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithMissingRecordStorage(),
 	)
 
 	// Create a new API instance with the cache client.

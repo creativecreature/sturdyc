@@ -42,24 +42,25 @@ func main() {
 	evictionPercentage := 10
 
 	// ===========================================================
-	// =================== Stampede protection ===================
+	// =================== Background refreshes ==================
 	// ===========================================================
 	// Set a minimum and maximum refresh delay for the record. This is
-	// used to spread out the refreshes for our entries evenly over time.
-	// We don't want our outgoing requests to look like a comb.
+	// used to spread out the refreshes of our entries evenly over time.
+	// We don't want our outgoing requests graph to look like a comb.
 	minRefreshDelay := time.Millisecond * 10
 	maxRefreshDelay := time.Millisecond * 30
-	// The base used for exponential backoff when retrying a refresh. Most of the time, we perform
-	// refreshes well in advance of the records expiry time. Hence, we can help a system that is
-	// having trouble to get back on its feet by making fewer refreshes. Once we receive a
-	// successful response, the refreshes return to their original frequency.
+	// The base used for exponential backoff when retrying a refresh. Most of the
+	// time, we perform refreshes well in advance of the records expiry time.
+	// Hence, we can use this to make it easier for a system that is having
+	// trouble to get back on it's feet by making fewer refreshes when we're
+	// seeing a lot of errors. Once we receive a successful response, the
+	// refreshes return to their original frequency. You can set this to 0
+	// if you don't want this behavior.
 	retryBaseDelay := time.Millisecond * 10
-	// NOTE: Ignore this for now, it will be shown in the next example.
-	storeMisses := false
 
 	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 
 	// Create a new API instance with the cache client.
@@ -67,9 +68,8 @@ func main() {
 
 	// We are going to retrieve the values every 10 milliseconds, however the
 	// logs will reveal that actual refreshes fluctuate randomly within a 10-30
-	// millisecond range. Even if this loop is executed across multiple
-	// goroutines, the API call frequency will maintain this variability,
-	// ensuring we avoid overloading the API with requests.
+	// millisecond range. Even if this loop is executed across multiple goroutines,
+	// the API call frequency will maintain this variability.
 	for i := 0; i < 100; i++ {
 		val, err := api.Get(context.Background(), "key")
 		if err != nil {

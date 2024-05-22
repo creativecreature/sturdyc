@@ -20,6 +20,7 @@ of them build on each other, and many share configurations. Here is a brief
 overview of what the examples are going to cover:
 
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
+- [**background refreshes**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#background-refreshes)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
 - [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
 - [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
@@ -27,6 +28,8 @@ overview of what the examples are going to cover:
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
 - [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
+- [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
+- [**distributed caching**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#distributed-caching)
 
 One thing that makes this package unique is that it has great support for
 batchable data sources. The cache takes responses apart, and then caches each
@@ -34,14 +37,10 @@ record individually based on the permutations of the options with which it was
 fetched. The options could be query params, SQL filters, or anything else that
 could affect the data.
 
-Records can be configured to refresh either based on time or at a certain rate
-of requests. All refreshes occur in the background, ensuring that users never
-have to wait for a record to be updated, resulting in _very low latency_
-applications while also allowing unused keys to expire.
-
 The cache can also help you significantly reduce your traffic to the underlying
-data sources by creating buffers for each unique option set, and then delaying
-the refreshes of the data until it has gathered enough IDs.
+data sources by performing background refreshes with buffers for each unique
+option set, and then delaying the refreshes of the data until it has gathered
+enough IDs.
 
 Below is a screenshot showing the latency improvements we've observed after
 replacing our old cache with this package:
@@ -113,41 +112,188 @@ particular piece of data, which has just expired or been evicted from the
 cache, come in at once
 
 Preventing this has been one of the key objectives for this package. We do not
-want to cause a significant load on the underlying data source every time a
-record expires.
+want to cause a significant load on the underlying data source every time a key
+is missing or a record expires.
 
-`sturdyc` handles this by scheduling background refreshes which prevents the
-records from ever expiring. A refresh gets scheduled if a key is **requested
-again** after a certain amount of time has passed. This is an important
-distinction because it means that it doesn't just naively refresh every key
-it's ever seen. Instead, it only refreshes the records that are actually in
-rotation, while allowing the unused keys to expire.
+The `GetFetch` function takes a key and a function for retrieving the data if
+it's not in the cache. The cache is going to ensure that we never have more
+than a single request per key. It achieves this by tracking all of the
+in-flight requests:
 
-To get this functionality, we can enable **stampede protection**:
+```go
+	var count atomic.Int32
+	fetchFn := func(_ context.Context) (int, error) {
+		count.Add(1)
+		time.Sleep(time.Second)
+		return 1337, nil
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			// We can ignore the error given the fetchFn we're using.
+			val, _ := cacheClient.GetFetch(context.Background(), "key2", fetchFn)
+			log.Printf("got value: %d\n", val)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	log.Printf("fetchFn was called %d time\n", count.Load())
+	log.Println(cacheClient.Get("key2"))
+
+```
+
+Running this program we'll see that our requests for "key2" were deduplicated,
+and that the fetchFn only got called once:
+
+```sh
+❯ go run .
+2024/05/21 08:06:29 got value: 1337
+2024/05/21 08:06:29 got value: 1337
+2024/05/21 08:06:29 got value: 1337
+2024/05/21 08:06:29 got value: 1337
+2024/05/21 08:06:29 got value: 1337
+2024/05/21 08:06:29 fetchFn was called 1 time
+2024/05/21 08:06:29 1337 true
+```
+
+We can use the `GetFetchBatch` function for datasources that supports batching.
+To demonstrate this, I'll create a mock function that sleeps for `5` seconds,
+and then returns a map with a numerical value for every ID:
+
+```go
+	var count atomic.Int32
+	fetchFn := func(_ context.Context, ids []string) (map[string]int, error) {
+		count.Add(1)
+		time.Sleep(time.Second * 5)
+
+		response := make(map[string]int, len(ids))
+		for _, id := range ids {
+			num, _ := strconv.Atoi(id)
+			response[id] = num
+		}
+
+		return response, nil
+	}
+```
+
+Next, we'll need some batches to test with, so I created three batches with 5
+IDs each:
+
+```go
+	batches := [][]string{
+		{"1", "2", "3", "4", "5"},
+		{"6", "7", "8", "9", "10"},
+		{"11", "12", "13", "14", "15"},
+	}
+```
+
+IDs can often be fetched from multiple data sources. Hence, we'll want to
+prefix the ID in order to make the cache key unique. The package provides more
+functionality for this that we'll see later on, but for now we'll use the most
+simple version which adds a string prefix to every ID:
+
+```go
+	keyPrefixFn := cacheClient.BatchKeyFn("my-data-source")
+```
+
+we can now request each batch in a separate goroutine:
+
+```go
+	for _, batch := range batches {
+		go func() {
+			res, _ := cacheClient.GetFetchBatch(context.Background(), batch, keyPrefixFn, fetchFn)
+			log.Printf("got batch: %v\n", res)
+		}()
+	}
+
+	// Give the goroutines above a chance to run to ensure that the batches are in-flight.
+	time.Sleep(time.Second * 3)
+```
+
+At this point, the cache should have in-flight requests for IDs 1-15. Knowing
+this, we'll test the stampede protection by launching another five goroutines.
+Each goroutine is going to request two random IDs from our batches:
+
+```go
+	// Launch another 5 goroutines that are going to pick two random IDs from any of the batches.
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			ids := []string{batches[rand.IntN(2)][rand.IntN(4)], batches[rand.IntN(2)][rand.IntN(4)]}
+			res, _ := cacheClient.GetFetchBatch(context.Background(), ids, keyPrefixFn, fetchFn)
+			log.Printf("got batch: %v\n", res)
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+	log.Printf("fetchFn was called %d times\n", count.Load())
+```
+
+Running this program, and looking at the logs, we'll see that the cache is able
+to pick IDs from different batches:
+
+```sh
+❯ go run .
+2024/05/21 09:14:23 got batch: map[8:8 9:9]
+2024/05/21 09:14:23 got batch: map[4:4 9:9] <---- NOTE: ID 4 and 9 are part of different batches
+2024/05/21 09:14:23 got batch: map[11:11 12:12 13:13 14:14 15:15]
+2024/05/21 09:14:23 got batch: map[1:1 7:7] <---- NOTE: ID 1 and 7 are part of different batches
+2024/05/21 09:14:23 got batch: map[10:10 6:6 7:7 8:8 9:9]
+2024/05/21 09:14:23 got batch: map[3:3 9:9] <---- NOTE: ID 3 and 9 are part of different batches
+2024/05/21 09:14:23 got batch: map[1:1 2:2 3:3 4:4 5:5]
+2024/05/21 09:14:23 got batch: map[4:4 9:9] <---- NOTE: ID 4 and 9 are part of different batches
+2024/05/21 09:14:23 fetchFn was called 3 times <---- NOTE: We only generated 3 outgoing requests.
+```
+
+And on the last line, we can see that we only generated 3 outgoing requests. The
+entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/basic)
+
+## Background refreshes
+
+It's fairly common to consume a datasource where you have a rough idea of how
+often the data might change, or where it is acceptable for the data to be a
+couple of milliseconds old. It could also be that the datasource has a rate
+limit, and that you're only allowed to query it once every second.
+
+For these type of use cases, you can configure the cache to perform background
+refreshes. A refresh is scheduled if a key is **requested again** after a
+configurable amount of time has passed. This is an important distinction
+because it means that the cache doesn't just naively refresh every key it's
+ever seen. Instead, it only refreshes the records that are actually in
+rotation, while allowing unused keys to be deleted once their TTL expires.
+
+Below is an example configuration:
 
 ```go
 func main() {
-	// Set a minimum and maximum refresh delay for the records. This is
-	// used to spread out the refreshes for our entries evenly over time.
-	// We don't want our outgoing requests to look like a comb.
+	// Set a minimum and maximum refresh delay for the record. This is
+	// used to spread out the refreshes of our entries evenly over time.
+	// We don't want our outgoing requests graph to look like a comb.
 	minRefreshDelay := time.Millisecond * 10
 	maxRefreshDelay := time.Millisecond * 30
-	// The base used for exponential backoff when retrying a refresh. Most of the time, we perform
-	// refreshes well in advance of the records expiry time. Hence, we can help a system that is
-	// having trouble to get back on its feet by making fewer refreshes. Once we receive a
-	// successful response, the refreshes return to their original frequency.
+	// The base used for exponential backoff when retrying a refresh. Most of the
+	// time, we perform refreshes well in advance of the records expiry time.
+	// Hence, we can use this to make it easier for a system that is having
+	// trouble to get back on it's feet by making fewer refreshes when we're
+	// seeing a lot of errors. Once we receive a successful response, the
+	// refreshes return to their original frequency. You can set this to 0
+	// if you don't want this behavior.
 	retryBaseDelay := time.Millisecond * 10
-	// NOTE: Ignore this for now, it will be shown in the next example.
-	storeMisses := false
 
+	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 }
 ```
 
-To test that our configuration works as intended, we'll create a simple API
-client:
+To test that it works as intended, we'll create a simple API client that
+embedds the cache:
 
 ```go
 type API struct {
@@ -159,10 +305,8 @@ func NewAPI(c *sturdyc.Client[string]) *API {
 }
 
 func (a *API) Get(ctx context.Context, key string) (string, error) {
-	// This could be an API call, a database query, etc. The only requirement is
-	// that the function adheres to the `sturdyc.FetchFn` signature. Remember
-	// that you can use closures to capture additional values.
-	fetchFn := func(_ context.Context) (string, error) {
+	// This could be an API call, a database query, etc.
+    fetchFn := func(_ context.Context) (string, error) {
 		log.Printf("Fetching value for key: %s\n", key)
 		return "value", nil
 	}
@@ -170,7 +314,8 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 }
 ```
 
-and then create an instance of it within our `main` function:
+and then return to our `main` function to create an instance of it and call the
+`Get` method in a loop:
 
 ```go
 func main() {
@@ -212,8 +357,21 @@ go run .
 ...
 ```
 
+This is going to reduce your response times significantly because none of your
+consumers will have to wait for the I/O operation that refreshes the data. It's
+always performed in the background.
+
+Additionally, you'll be able to provide a degraded experience by continuously
+serving the most recent data you have cached even when an upstream system
+encounters issues and the refreshes begin to fail. This data will never be
+older than the defined TTL. Therefore, the values for `minRefreshDelay` and
+`maxRefreshDelay` that we pass to `sturdyc.WithBackgroundRefreshes` should
+specify an optimal interval of how fresh we'd like the data to be. The `TTL`
+should be set to a duration where the data is considered too outdated to be
+useful.
+
 Now what if the record was deleted? Our cache might use a 2-hour-long TTL, and
-we definitely don't want to have a deleted record stay around for that long.
+we definitely don't want it to take that long for the deletion to propagate.
 
 However, if we were to modify our client so that it returns an error after the
 first request:
@@ -287,11 +445,15 @@ for every refresh, but the value is still being printed:
 ```
 
 This is a bit tricky because this is actually the functionality we want. If an
-upstream goes down, we want to be able to serve stale and reduce the frequency
-of the refreshes to make it easier for them to recover.
+upstream system goes down, we want to be able to serve stale data for the
+duration of the TTL, while reducing the frequency of our refreshes to make it
+easier for the system to recover.
 
 How you determine if a record has been deleted is going to vary based on your
-data source it there is no way for the cache to figure this out automatically.
+data source too. It could be a status code, zero value, empty list, specific
+error message, etc. There is no way for the cache to figure this out
+implicitly.
+
 Therefore, if a record is deleted, we'll have to explicitly inform the cache
 about it by returning a custom error:
 
@@ -307,7 +469,7 @@ fetchFn := func(_ context.Context) (string, error) {
 ```
 
 If we run this application again we'll see that it works, and that we're no
-longer getting any cache hits which leads to outgoing requests for every
+longer getting any cache hits. This leads to outgoing requests for every
 iteration:
 
 ```go
@@ -325,14 +487,35 @@ iteration:
 2024/05/09 13:40:47 Failed to  retrieve the record from the cache.
 ```
 
-The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/stampede)
+**Please note** that we only have to return the `sturdyc.ErrDeleteRecord` when
+we're using `GetFetch`. For `GetFetchBatch`, we'll simply omit the key from the
+map we're returning. I think this inconsistency is a little unfortunate, but it
+was the best API I could think of. Having to return an error like this even if
+the call was successful felt much worse:
+
+```go
+	batchFetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
+		response, err := myDataSource(cacheMisses)
+		for _, id := range cacheMisses {
+			// NOTE: Don't do this, it's just an example.
+			if response[id]; !id {
+                return response, sturdyc.ErrDeleteRecord
+            }
+		}
+		return response, nil
+	}
+```
+
+The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/refreshes)
 
 # Non-existent records
 
-In the example above, we can see that asking for keys that don't exist leads to
-a continuous stream of outgoing requests, as we're never able to get a cache
-hit and serve from memory. If this happens frequently, it's going to
-significantly increase our system's latency.
+In the example above, we could see that once we delete the key, the following
+iterations lead to a continuous stream of outgoing requests. This will happen
+for every ID that never existed as well. If we can't retrieve it, we can't
+cache it. If we can't cache it, we can't serve it from memory. If this happens
+frequently, we'll experience a lot of I/O operations, which will significantly
+increase our system's latency.
 
 The reasons why someone might request IDs that don't exist can vary. It could
 be due to a faulty CMS configuration, or perhaps it's caused by a slow
@@ -340,14 +523,15 @@ ingestion process where it takes time for a new entity to propagate through a
 distributed system. Regardless, this will negatively impact our systems
 performance.
 
-To address this issue, we can instruct the cache to store these IDs as missing
+To address this issue, we can instruct the cache to mark these IDs as missing
 records. Missing records are refreshed at the same frequency as regular
 records. Hence, if an ID is continuously requested, and the upstream eventually
-returns a valid response, the record will no longer be marked by the cache as
-missing.
+returns a valid response, we'll see it propagate to our cache.
 
-To illustrate, we'll make some small modifications to the code from the
-previous example:
+To illustrate, I'll make some small modifications to the code from the previous
+example. The only thing I'm going to change is to make the API client return a
+`ErrStoreMissingRecord` error for the first three requests. This error informs
+the cache that it should mark this key as missing.
 
 ```go
 type API struct {
@@ -366,31 +550,26 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		if a.count > 3 {
 			return "value", nil
 		}
+		// This error tells the cache that the data does not exist at the source.
 		return "", sturdyc.ErrStoreMissingRecord
 	}
 	return a.GetFetch(ctx, key, fetchFn)
 }
 ```
 
-The only thing that's changed, is that we're now returning `ErrStoreMissingRecord`
-for the first 3 request. This error informs the cache that it should mark this
-key as missing.
-
-Next, we'll just have to tell the cache that it should store missing records:
+Next, we'll just have to enable this functionality, and check for the
+`ErrMissingRecord` error which the cache returns when a record has been marked
+as missing:
 
 ```go
 func main() {
 	// ...
 
-	// Tell the cache to store missing records.
-	storeMisses := true
-
-	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithMissingRecordStorage(),
 	)
 
-	// Create a new API instance with the cache client.
 	api := NewAPI(cacheClient)
 
 	// ...
@@ -428,6 +607,18 @@ refreshes and then transitions into having a value:
 2024/05/09 21:25:28 Value: value
 2024/05/09 21:25:28 Fetching value for key: key
 ...
+```
+
+**Please note** that this functionality is _implicit_ for `GetFetchBatch`:
+
+```go
+	batchFetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
+		// The cache will check if every ID in cacheMisses is present in the response.
+		// If it finds any IDs that are missing it will proceed to mark them as missing
+		// if missing record storage is enabled.
+		response, err := myDataSource(cacheMisses)
+		return response, nil
+	}
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/missing)
@@ -477,7 +668,7 @@ func NewAPI(c *sturdyc.Client[string]) *API {
 }
 
 func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, error) {
-	// We are going to pass the cache a key function that prefixes each id.
+	// We are going to use a cache a key function that prefixes each id.
 	// This makes it possible to save the same id for different data sources.
 	cacheKeyFn := a.BatchKeyFn("some-prefix")
 
@@ -485,8 +676,6 @@ func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, er
 	fetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
 		log.Printf("Cache miss. Fetching ids: %s\n", strings.Join(cacheMisses, ", "))
 		// Batch functions should return a map where the key is the id of the record.
-		// If you have store missing records enabled, any ID that isn't present
-		// in this map is going to be stored as a cache miss.
 		response := make(map[string]string, len(cacheMisses))
 		for _, id := range cacheMisses {
 			response[id] = "value"
@@ -508,7 +697,7 @@ func main() {
 	// Create a new API instance with the cache client.
 	api := NewAPI(cacheClient)
 
-	// Seed the cache with ids 1-10.
+	// Make an initial call to make sure that IDs 1-10 are retrieved and cached.
 	log.Println("Seeding ids 1-10")
 	ids := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
 	api.GetBatch(context.Background(), ids)
@@ -538,7 +727,6 @@ while continuously getting cache hits for IDs 1-10, regardless of what the
 batch looks like:
 
 ```sh
-...
 2024/04/07 11:09:58 Seed completed
 2024/04/07 11:09:58 Cache miss. Fetching ids: 173
 2024/04/07 11:09:58 map[1:value 173:value 2:value 3:value 4:value]
@@ -550,14 +738,6 @@ batch looks like:
 2024/04/07 11:09:58 map[1:value 2:value 3:value 4:value 5:value 520:value 6:value 7:value 8:value]
 ...
 ```
-
-I've already mentioned this in a previous comment, but I think it's important,
-so I'll mention it again. Deleting and marking records as missing is
-**implicit** for batch operations (client.GetFetchBatch and
-client.PassthroughBatch). The cache will examine the keys of the map you
-return, and if the option to store missing records is enabled, the record will
-be marked as missing. If this option is not enabled and the record exists in
-the cache, it will be deleted. You do not need to return any custom errors.
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/batch)
 
@@ -571,16 +751,21 @@ ways.
 Consider this:
 
 ```sh
-curl https://movie-api/movies?ids=1,2,3&filterUpcoming=true
-curl https://movie-api/movies?ids=1,2,3&filterUpcoming=false
+curl https://movie-api/movies?ids=1,2,3&filterUpcoming=true&includeTrailers=false
+curl https://movie-api/movies?ids=1,2,3&filterUpcoming=false&includeTrailers=true
 ```
 
-These responses might look completely different depending on whether any of
-these movies are upcoming. Hence, it's important to store these records once
-for each unique option set.
+The IDs might be enough to uniquely identify these records in a database.
+However, when you're consuming them through another system, they will probably
+appear completely different as transformations are applied based on the options
+you pass. Hence, it's important that we store these records once for each
+unique option set.
 
-The best way to showcase this, is to create a simple API client. This client is
-going to be used to interact with a service for retrieving order statuses:
+The options does not have to be query parameters either. The datasource you're
+consuming could still be a database, and the options that you want to make part
+of the cache key could be different types of filters.
+
+Below is a small example application to showcase this functionality:
 
 ```go
 type OrderOptions struct {
@@ -598,8 +783,7 @@ func NewOrderAPI(c *sturdyc.Client[string]) *OrderAPI {
 
 func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOptions) (map[string]string, error) {
 	// We use the PermutedBatchKeyFn when an ID isn't enough to uniquely identify a
-	// record. The cache is going to store each id once per set of options. In a more
-	// realistic scenario, the opts would be query params or arguments to a DB query.
+	// record. The cache is going to store each id once per set of options.
 	cacheKeyFn := a.PermutatedBatchKeyFn("key", opts)
 
 	// We'll create a fetchFn with a closure that captures the options. For this
@@ -619,8 +803,8 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 
 The main difference from the previous example is that we're using
 `PermutatedBatchKeyFn` instead of `BatchKeyFn`. Internally, the cache will use
-reflection to extract the names and values of every exported field in the opts
-struct, and then include them when it constructs the cache keys.
+reflection to extract the names and values of every **exported** field in the
+opts struct, and then include them when it constructs the cache keys.
 
 Now, let's try to use this client:
 
@@ -630,10 +814,10 @@ func main() {
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 
-	// We will fetch these IDs using various option sets.
+	// We will fetch these IDs using three different option sets.
 	ids := []string{"id1", "id2", "id3"}
 	optionSetOne := OrderOptions{CarrierName: "FEDEX", LatestDeliveryTime: "2024-04-06"}
 	optionSetTwo := OrderOptions{CarrierName: "DHL", LatestDeliveryTime: "2024-04-07"}
@@ -642,7 +826,8 @@ func main() {
 	orderClient := NewOrderAPI(cacheClient)
 	ctx := context.Background()
 
-	// Next, we'll seed our cache by fetching the entire list of IDs for all options sets.
+	// Next, we'll call the orderClient to make sure that we've retrieved and cached
+	// these IDs for all of our option sets.
 	log.Println("Filling the cache with all IDs for all option sets")
 	orderClient.OrderStatus(ctx, ids, optionSetOne)
 	orderClient.OrderStatus(ctx, ids, optionSetTwo)
@@ -654,10 +839,12 @@ func main() {
 At this point, the cache has stored each record individually for each option
 set. We can imagine that the keys might look something like this:
 
-- FEDEX-2024-04-06-id1
-- DHL-2024-04-07-id1
-- UPS-2024-04-08-id1
-- etc..
+```
+FEDEX-2024-04-06-id1
+DHL-2024-04-07-id1
+UPS-2024-04-08-id1
+etc..
+```
 
 Next, we'll add a sleep to make sure that all of the records are due for a
 refresh, and then request the ids individually for each set of options:
@@ -692,15 +879,15 @@ go run .
 2024/04/07 13:33:56 Fetching: [id1 id2 id3], carrier: DHL, delivery time: 2024-04-07
 2024/04/07 13:33:56 Fetching: [id1 id2 id3], carrier: UPS, delivery time: 2024-04-08
 2024/04/07 13:33:56 Cache filled
-2024/04/07 13:33:58 Fetching: [id3], carrier: UPS, delivery time: 2024-04-08
 2024/04/07 13:33:58 Fetching: [id1], carrier: FEDEX, delivery time: 2024-04-06
 2024/04/07 13:33:58 Fetching: [id1], carrier: UPS, delivery time: 2024-04-08
+2024/04/07 13:33:58 Fetching: [id1], carrier: DHL, delivery time: 2024-04-07
 2024/04/07 13:33:58 Fetching: [id2], carrier: UPS, delivery time: 2024-04-08
 2024/04/07 13:33:58 Fetching: [id2], carrier: FEDEX, delivery time: 2024-04-06
-2024/04/07 13:33:58 Fetching: [id3], carrier: FEDEX, delivery time: 2024-04-06
 2024/04/07 13:33:58 Fetching: [id2], carrier: DHL, delivery time: 2024-04-07
+2024/04/07 13:33:58 Fetching: [id3], carrier: FEDEX, delivery time: 2024-04-06
+2024/04/07 13:33:58 Fetching: [id3], carrier: UPS, delivery time: 2024-04-08
 2024/04/07 13:33:58 Fetching: [id3], carrier: DHL, delivery time: 2024-04-07
-2024/04/07 13:33:58 Fetching: [id1], carrier: DHL, delivery time: 2024-04-07
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/permutations)
@@ -730,7 +917,7 @@ func main() {
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 	)
 
@@ -753,38 +940,15 @@ go run .
 2024/04/07 13:45:44 Fetching: [id1 id2 id3], carrier: UPS, delivery time: 2024-04-08
 ```
 
+The number of outgoing requests for the refreshes went from **9** to **3**.
+
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/buffering)
 
 # Passthrough
-
-Time-based refreshes work really well for most use cases. However, there are
-scenarios where you might want to allow a certain amount of traffic to hit the
-underlying data source. For example, you might achieve a 99.99% cache hit rate,
-and even though you refresh the data every 1-2 seconds, it results in only a
-handful of requests. This could cause the other system to scale down
-excessively.
-
-To solve this problem, you can use `client.Passthrough` and
-`client.PassthroughBatchs`. These functions are functionally equivalent to
-`client.GetFetch` and `client.GetFetchBatch`, but they differ in that they
-allow a certain percentage of requests to pass through and refresh the records,
-instead of refreshing records based solely on time.
-
-```go
-capacity := 5
-numShards := 2
-ttl := time.Minute
-evictionPercentage := 10
-c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-	// Allow 50% of the requests to pass-through. Default is 100%.
-	sturdyc.WithPassthroughPercentage(50),
-	// Buffer the batchable pass-throughs. Default is false.
-	sturdyc.WithPassthroughBuffering(),
-)
-
-res, err := c.Passthrough(ctx, "id", fetchFn)
-batchRes, batchErr := c.PassthroughBatch(ctx, idBatch, c.BatchKeyFn("item"), batchFetchFn)
-```
+There are times when you want to always retrieve the latest data from the
+source and only use the in-memory cache as a fallback. In such scenarios, you
+can use the `Passthrough` and `PassthroughBatch` functions. The cache will
+still perform in-flight request tracking and deduplicate your requests.
 
 # Custom metrics
 
@@ -837,31 +1001,35 @@ Below are a few images where these metrics have been visualized in Grafana:
 <img width="940" alt="Screenshot 2024-05-04 at 12 38 20" src="https://github.com/creativecreature/sturdyc/assets/12787673/de7f00ee-b14d-443b-b69e-91e19665c252">
 
 # Generics
+Personally, I tend to create caches based on how frequently the data needs to
+be refreshed rather than what type of data it stores. I'll often have one
+transient cache which refreshes the data every 2-5 milliseconds, and another
+cache where I'm fine if the data is up to a minute old.
 
-There are scenarios, where you might want to use the same cache for a data
-source that could return multiples types. Personally, I tend to create caches
-based on how frequently the data needs to be refreshed. I'll often have one
-transient cache which refreshes the data every 2-5 milliseconds. Hence, I'll
-use `any` as the type:
+Hence, I don't want to tie the cache to any specific type so I'll often just
+use `any`:
 
 ```go
 	cacheClient := sturdyc.New[any](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.BackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 		sturdyc.WithRefreshBuffering(10, time.Second*15),
 	)
 ```
 
-However, if this data source has more than a handful of types, the type
-assertions may quickly feel like too much boilerplate. If that is the case, you
-can use any of these package level functions:
+However, having all client methods return `any` can quickly add a lot of
+boilerplate if you're storing more than a handful of types, and need to make
+type assertions.
+
+If you want to avoid this, you can use any of the package level exports:
 
 - [`GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch)
 - [`GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch)
 - [`Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Passthrough)
 - [`PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#PassthroughBatch)
 
-They will perform the type conversions for you, and if any of them were to fail,
-you'll get a [`ErrInvalidType`](https://pkg.go.dev/github.com/creativecreature/sturdyc#pkg-variables) error.
+They will take the cache, call the function for you, and perform the type
+conversions internally. If the type conversions were to fail, you'll get a
+[`ErrInvalidType`](https://pkg.go.dev/github.com/creativecreature/sturdyc#pkg-variables) error.
 
 Below is an example of what an API client that uses these functions could look
 like:
@@ -901,3 +1069,69 @@ func (a *OrderAPI) DeliveryTime(ctx context.Context, ids []string) (map[string]t
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/generics)
+
+# Distributed caching
+I've thought about adding this functionality internally because it would be
+really fun to build. However, there are already a lot of projects that are
+doing this exceptionally well.
+
+Therefore, I've tried to design the API so that this package is easy to use in
+**combination** with a distributed key-value store
+
+Let's use this function as an example:
+
+```go
+func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
+	fetchFn := func(ctx context.Context) (string, error) {
+		var response OrderStatusResponse
+		err := requests.URL(o.baseURL).
+			Param("id", id).
+			ToJSON(&response).
+			Fetch(ctx)
+		if err != nil {
+			return "", err
+		}
+
+		return response.OrderStatus, nil
+	}
+
+	return o.GetFetch(ctx, id, fetchFn)
+}
+```
+
+The only modification you would have to make is to check the distributed storage
+first, and then write to it if the key is missing:
+
+```go
+func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
+	fetchFn := func(ctx context.Context) (string, error) {
+		// Check redis cache first.
+		if orderStatus, ok := o.redisClient.Get(id); ok {
+			return orderStatus, nil
+		}
+
+		// Fetch the order status from the underlying data source.
+		var response OrderStatusResponse
+		err := requests.URL(o.baseURL).
+			Param("id", id).
+			ToJSON(&response).
+			Fetch(ctx)
+		if err != nil {
+			return "", err
+		}
+
+		// Add the order status to the redis cache.
+		go func() { o.RedisClient.Set(id, response.OrderStatus, time.Hour) }()
+
+		return response.OrderStatus, nil
+	}
+
+	return o.GetFetch(ctx, id, fetchFn)
+}
+```
+
+I've used this setup a lot, where I let `sturdyc` handle request deduplication,
+refresh buffering, and cache key permutations. This has often allowed me to use
+a **much cheaper** database cluster, as the efficiency gains from batching the
+refreshes, and often being able to serve entirely from memory, significantly
+reduces the traffic to the distributed key-value store.

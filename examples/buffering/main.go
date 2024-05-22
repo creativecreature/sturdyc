@@ -60,7 +60,6 @@ func main() {
 	retryBaseDelay := time.Millisecond * 10
 	// Whether to store misses in the sturdyc. This can be useful to
 	// prevent the cache from fetching a non-existent key repeatedly.
-	storeMisses := true
 
 	// With refresh buffering enabled, the cache will buffer refreshes
 	// until the batch size is reached or the buffer timeout is hit.
@@ -69,7 +68,7 @@ func main() {
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
 	)
 

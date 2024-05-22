@@ -87,7 +87,7 @@ func (s *shard[T]) get(key string) (val T, exists, ignore, refresh bool) {
 		return val, false, false, false
 	}
 
-	shouldRefresh := s.refreshesEnabled && s.clock.Now().After(item.refreshAt)
+	shouldRefresh := s.refreshInBackground && s.clock.Now().After(item.refreshAt)
 	if shouldRefresh {
 		// Release the read lock, and switch to a write lock.
 		s.RUnlock()
@@ -140,7 +140,7 @@ func (s *shard[T]) set(key string, value T, isMissingRecord bool) bool {
 		isMissingRecord: isMissingRecord,
 	}
 
-	if s.refreshesEnabled {
+	if s.refreshInBackground {
 		// If there is a difference between the min- and maxRefreshTime we'll use that to
 		// set a random padding so that the refreshes get spread out evenly over time.
 		var padding time.Duration

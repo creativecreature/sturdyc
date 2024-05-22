@@ -91,7 +91,7 @@ func TestPanicsIfTheRefreshBufferSizeIsLessThanOne(t *testing.T) {
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithStampedeProtection(time.Minute, time.Hour, time.Second, true),
+		sturdyc.WithBackgroundRefreshes(time.Minute, time.Hour, time.Second),
 		sturdyc.WithRefreshBuffering(0, time.Minute),
 	)
 }
@@ -106,7 +106,7 @@ func TestPanicsIfTheRefreshBufferTimeoutIsLessThanOne(t *testing.T) {
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithStampedeProtection(time.Minute, time.Hour, time.Second, true),
+		sturdyc.WithBackgroundRefreshes(time.Minute, time.Hour, time.Second),
 		sturdyc.WithRefreshBuffering(10, 0),
 	)
 }
@@ -135,7 +135,7 @@ func TestPanicsIfTheMinRefreshTimeIsGreaterThanTheMaxRefreshTime(t *testing.T) {
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithStampedeProtection(time.Hour, time.Minute, time.Second, true),
+		sturdyc.WithBackgroundRefreshes(time.Hour, time.Minute, time.Second),
 	)
 }
 
@@ -149,34 +149,6 @@ func TestPanicsIfTheRetryBaseDelayIsLessThanZero(t *testing.T) {
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithStampedeProtection(time.Minute, time.Hour, -1, true),
-	)
-}
-
-func TestPanicsIfPassthroughPercentageIsLessThanOne(t *testing.T) {
-	t.Parallel()
-
-	defer func() {
-		err := recover()
-		if err == nil {
-			t.Error("expected a panic when trying to use -1 as passthrough percentage")
-		}
-	}()
-	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithPassthroughPercentage(-1),
-	)
-}
-
-func TestPanicsIfPassthroughPercentageIsGreaterThanOneHundred(t *testing.T) {
-	t.Parallel()
-
-	defer func() {
-		err := recover()
-		if err == nil {
-			t.Error("expected a panic when trying to use 101 as passthrough percentage")
-		}
-	}()
-	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithPassthroughPercentage(101),
+		sturdyc.WithBackgroundRefreshes(time.Minute, time.Hour, -1),
 	)
 }
