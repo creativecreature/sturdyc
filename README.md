@@ -8,13 +8,47 @@
 
 `Sturdyc` is a highly concurrent cache that supports non-blocking reads and has
 a configurable number of shards that makes it possible to achieve parallel
-writes. The [xxhash](https://github.com/cespare/xxhash) algorithm is used for
-efficient key distribution. Evictions are performed per shard based on recency at
-O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
+writes without any lock contention. The [xxhash](https://github.com/cespare/xxhash) algorithm
+is used for efficient key distribution. Evictions are performed per shard based
+on recency at O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
 It has all the functionality you would expect from a caching library, but what
-sets it apart are the additional features which have been designed to make
-it easier to build more _performant_ and _robust_ applications.
+**sets it apart** is all the functionality you get that has been designed to
+make it easier to build highly _performant_ and _robust_ applications.
+
+You can enable *background refreshes* which instructs the cache to refresh the
+keys which are in active rotation, thereby preventing them from ever expiring.
+This can have a huge impact on an applications latency as you're able to
+continiously serve data from memory:
+
+```go
+sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, exponentialBackOff)
+```
+
+There is also excellent support for retrieving and caching data from batchable
+data sources. The cache disassembles the responses and then caches each record
+individually based on the permutations of the options with which it was
+fetched. To significantly reduce your applications outgoing requests to these
+data sources, you can instruct the cache to use *refresh buffering*:
+
+```go
+sturdyc.WithRefreshBuffering(idealBatchSize, batchBufferTimeout)
+```
+
+`sturdyc` performs *in-flight* tracking for every key. This works for batching
+too where it's able to deduplicate a batch of cache misses, and then assemble
+the response by picking records from multiple in-flight requests.
+
+Below is a screenshot showing the latency improvements we've observed after
+replacing our old cache with this package:
+
+&nbsp;
+<img width="1554" alt="Screenshot 2024-05-10 at 10 15 18" src="https://github.com/creativecreature/sturdyc/assets/12787673/adad1d4c-e966-4db1-969a-eda4fd75653a">
+&nbsp;
+
+In addition to this, we've seen our number of outgoing requests decrease by
+more than 90% while still serving data that is refreshed every second. This
+setting is configurable, and you can adjust it to a lower value if you like.
 
 There are examples further down thise file that covers the entire API, and I
 encourage you to **read these examples in the order they appear**. Most of them
@@ -28,31 +62,9 @@ what the examples are going to cover:
 - [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
 - [**refresh buffering**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-buffering)
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
+- [**distributed caching**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#distributed-caching)
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
 - [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
-- [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
-- [**distributed caching**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#distributed-caching)
-
-Another thing that makes this package unique is that it has great support for
-batchable data sources. The cache takes responses apart, and then caches each
-record individually based on the permutations of the options with which it was
-fetched. The options could be query params, SQL filters, or anything else that
-could affect the data.
-
-The cache can also help you significantly reduce traffic any underlying data
-source by performing background refreshes with buffers for each unique option
-set, and then delaying the refreshes of the data until it has gathered enough
-IDs.
-
-Below is a screenshot showing the latency improvements we've observed after
-replacing our old cache with this package:
-
-&nbsp;
-<img width="1554" alt="Screenshot 2024-05-10 at 10 15 18" src="https://github.com/creativecreature/sturdyc/assets/12787673/adad1d4c-e966-4db1-969a-eda4fd75653a">
-&nbsp;
-
-In addition to this, we've also seen that our number of outgoing requests has
-decreased by more than 90%.
 
 # Installing
 
@@ -952,6 +964,71 @@ source and only use the in-memory cache as a fallback. In such scenarios, you
 can use the `Passthrough` and `PassthroughBatch` functions. The cache will
 still perform in-flight request tracking and deduplicate your requests.
 
+# Distributed caching
+I've thought about adding this functionality internally because it would be
+really fun to build. However, there are already a lot of projects that are
+doing this exceptionally well.
+
+Therefore, I've tried to design the API so that this package is easy to use in
+**combination** with a distributed key-value store
+
+Let's use this function as an example:
+
+```go
+func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
+	fetchFn := func(ctx context.Context) (string, error) {
+		var response OrderStatusResponse
+		err := requests.URL(o.baseURL).
+			Param("id", id).
+			ToJSON(&response).
+			Fetch(ctx)
+		if err != nil {
+			return "", err
+		}
+
+		return response.OrderStatus, nil
+	}
+
+	return o.GetFetch(ctx, id, fetchFn)
+}
+```
+
+The only modification you would have to make is to check the distributed storage
+first, and then write to it if the key is missing:
+
+```go
+func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
+	fetchFn := func(ctx context.Context) (string, error) {
+		// Check redis cache first.
+		if orderStatus, ok := o.redisClient.Get(id); ok {
+			return orderStatus, nil
+		}
+
+		// Fetch the order status from the underlying data source.
+		var response OrderStatusResponse
+		err := requests.URL(o.baseURL).
+			Param("id", id).
+			ToJSON(&response).
+			Fetch(ctx)
+		if err != nil {
+			return "", err
+		}
+
+		// Add the order status to the redis cache.
+		go func() { o.RedisClient.Set(id, response.OrderStatus, time.Hour) }()
+
+		return response.OrderStatus, nil
+	}
+
+	return o.GetFetch(ctx, id, fetchFn)
+}
+```
+
+With this setup, `sturdyc` is going to handle request deduplication, refresh
+buffering, and cache key permutations. You are going to gain efficiency by
+enabling batch refreshes, and latency improvements whenever you're able to
+serve from memory.
+
 # Custom metrics
 
 The cache can be configured to report custom metrics for:
@@ -1071,68 +1148,3 @@ func (a *OrderAPI) DeliveryTime(ctx context.Context, ids []string) (map[string]t
 ```
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/generics)
-
-# Distributed caching
-I've thought about adding this functionality internally because it would be
-really fun to build. However, there are already a lot of projects that are
-doing this exceptionally well.
-
-Therefore, I've tried to design the API so that this package is easy to use in
-**combination** with a distributed key-value store
-
-Let's use this function as an example:
-
-```go
-func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
-	fetchFn := func(ctx context.Context) (string, error) {
-		var response OrderStatusResponse
-		err := requests.URL(o.baseURL).
-			Param("id", id).
-			ToJSON(&response).
-			Fetch(ctx)
-		if err != nil {
-			return "", err
-		}
-
-		return response.OrderStatus, nil
-	}
-
-	return o.GetFetch(ctx, id, fetchFn)
-}
-```
-
-The only modification you would have to make is to check the distributed storage
-first, and then write to it if the key is missing:
-
-```go
-func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
-	fetchFn := func(ctx context.Context) (string, error) {
-		// Check redis cache first.
-		if orderStatus, ok := o.redisClient.Get(id); ok {
-			return orderStatus, nil
-		}
-
-		// Fetch the order status from the underlying data source.
-		var response OrderStatusResponse
-		err := requests.URL(o.baseURL).
-			Param("id", id).
-			ToJSON(&response).
-			Fetch(ctx)
-		if err != nil {
-			return "", err
-		}
-
-		// Add the order status to the redis cache.
-		go func() { o.RedisClient.Set(id, response.OrderStatus, time.Hour) }()
-
-		return response.OrderStatus, nil
-	}
-
-	return o.GetFetch(ctx, id, fetchFn)
-}
-```
-
-With this setup, `sturdyc` is going to handle request deduplication, refresh
-buffering, and cache key permutations. You are going to gain efficiency by
-enabling batch refreshes, and latency improvements whenever you're able to
-serve from memory.
