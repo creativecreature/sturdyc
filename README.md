@@ -12,12 +12,14 @@ writes. The [xxhash](https://github.com/cespare/xxhash) algorithm is used for
 efficient key distribution. Evictions are performed per shard based on recency at
 O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
-It has all the functionality you would expect from a caching library, along
-with additional features designed to help you build _performant_ and _robust_
-applications. There are examples further down the file that covers the entire
-API. I encourage you to **read these examples in the order they appear**. Most
-of them build on each other, and many share configurations. Here is a brief
-overview of what the examples are going to cover:
+It has all the functionality you would expect from a caching library, but what
+sets it apart are the additional features which have been designed to make
+it easier to build more _performant_ and _robust_ applications.
+
+There are examples further down thise file that covers the entire API, and I
+encourage you to **read these examples in the order they appear**. Most of them
+build on each other, and many share configurations. Here is a brief overview of
+what the examples are going to cover:
 
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**background refreshes**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#background-refreshes)
@@ -31,16 +33,16 @@ overview of what the examples are going to cover:
 - [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
 - [**distributed caching**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#distributed-caching)
 
-One thing that makes this package unique is that it has great support for
+Another thing that makes this package unique is that it has great support for
 batchable data sources. The cache takes responses apart, and then caches each
 record individually based on the permutations of the options with which it was
 fetched. The options could be query params, SQL filters, or anything else that
 could affect the data.
 
-The cache can also help you significantly reduce your traffic to the underlying
-data sources by performing background refreshes with buffers for each unique
-option set, and then delaying the refreshes of the data until it has gathered
-enough IDs.
+The cache can also help you significantly reduce traffic any underlying data
+source by performing background refreshes with buffers for each unique option
+set, and then delaying the refreshes of the data until it has gathered enough
+IDs.
 
 Below is a screenshot showing the latency improvements we've observed after
 replacing our old cache with this package:
@@ -1130,8 +1132,7 @@ func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
 }
 ```
 
-I've used this setup a lot, where I let `sturdyc` handle request deduplication,
-refresh buffering, and cache key permutations. This has often allowed me to use
-a **much cheaper** database cluster, as the efficiency gains from batching the
-refreshes, and often being able to serve entirely from memory, significantly
-reduces the traffic to the distributed key-value store.
+With this setup, `sturdyc` is going to handle request deduplication, refresh
+buffering, and cache key permutations. You are going to get efficiency gain by
+enabling batch refreshes, and latency improvements whenever you're able to
+serve from memory.
