@@ -67,8 +67,8 @@ func TestPassthroughBatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	capacity := 5
-	numShards := 2
+	capacity := 100000
+	numShards := 100
 	ttl := time.Minute
 	evictionPercentage := 10
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
