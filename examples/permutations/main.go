@@ -58,13 +58,10 @@ func main() {
 	maxRefreshDelay := time.Second * 2
 	// The base for exponential backoff when retrying a refresh.
 	retryBaseDelay := time.Millisecond * 10
-	// Whether to store misses in the sturdyc. This can be useful to
-	// prevent the cache from fetching a non-existent key repeatedly.
-	storeMisses := true
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryBaseDelay, storeMisses),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 
 	// We will fetch these IDs using various option sets, meaning that the ID alone

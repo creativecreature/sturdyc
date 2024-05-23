@@ -69,7 +69,7 @@ func makeBatchCall[T, V any](ctx context.Context, c *Client[T], opts makeBatchCa
 	}
 
 	// Check if we should store any of these IDs as a missing record.
-	if c.storeMisses && len(response) < len(opts.ids) {
+	if c.storeMissingRecords && len(response) < len(opts.ids) {
 		for _, id := range opts.ids {
 			if _, ok := response[id]; !ok {
 				var zero T
@@ -102,7 +102,7 @@ func callAndCache[V, T any](ctx context.Context, c *Client[T], key string, fn Fe
 	c.inFlightMutex.Unlock()
 
 	response, err := fn(ctx)
-	if err != nil && c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
+	if err != nil && c.storeMissingRecords && errors.Is(err, ErrStoreMissingRecord) {
 		c.SetMissing(key, *new(T), true)
 		return response, c.endErrorFlight(call, key, ErrMissingRecord)
 	}

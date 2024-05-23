@@ -15,7 +15,7 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 	}
 
 	// If we got a perfect batch size, we can refresh the records immediately.
-	if len(ids) == c.batchSize {
+	if len(ids) == c.bufferSize {
 		c.refreshBatch(ids, keyFn, fetchFn)
 		return
 	}
@@ -23,9 +23,9 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 	c.batchMutex.Lock()
 
 	// If the ids are greater than our batch size we'll have to chunk them.
-	if len(ids) > c.batchSize {
-		idsToRefresh := ids[:c.batchSize]
-		overflowingIDs := ids[c.batchSize:]
+	if len(ids) > c.bufferSize {
+		idsToRefresh := ids[:c.bufferSize]
+		overflowingIDs := ids[c.bufferSize:]
 		c.batchMutex.Unlock()
 
 		// These IDs are the size we want, so we'll refresh them immediately.
@@ -102,7 +102,7 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 				c.bufferPermutationIDs[permutationString] = append(c.bufferPermutationIDs[permutationString], additionalIDs...)
 
 				// If we haven't reached the batch size yet, we'll wait for more ids.
-				if len(c.bufferPermutationIDs[permutationString]) < c.batchSize {
+				if len(c.bufferPermutationIDs[permutationString]) < c.bufferSize {
 					c.batchMutex.Unlock()
 					continue
 				}
@@ -117,8 +117,8 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 				deleteBuffer(c, permutationString)
 				c.batchMutex.Unlock()
 
-				idsToRefresh := permIDs[:c.batchSize]
-				overflowingIDs := permIDs[c.batchSize:]
+				idsToRefresh := permIDs[:c.bufferSize]
+				overflowingIDs := permIDs[c.bufferSize:]
 
 				// Refresh the first batch of IDs immediately.
 				safeGo(func() {

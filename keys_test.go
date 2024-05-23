@@ -175,7 +175,7 @@ func TestPermutatedBatchKeyFn(t *testing.T) {
 		IncludeUpcoming: true,
 		limit:           2,
 	})
-	want := "cache-key-true-ID-1"
+	want := "cache-key-true-STURDYC_ID-1"
 	got := cacheKeyFunc("1")
 
 	if got != want {
@@ -205,6 +205,29 @@ func TestTimePointers(t *testing.T) {
 	empty := time.Time{}
 	got = cache.PermutatedKey("key", opts{Time: &empty})
 	want = "key-empty-time"
+	if got != want {
+		t.Errorf("got: %s wanted: %s", got, want)
+	}
+}
+
+func TestFunctionAndMapsAreIgnored(t *testing.T) {
+	t.Parallel()
+
+	c := sturdyc.New[any](100, 1, time.Hour, 5)
+	type queryParams struct {
+		BoolValues []bool
+		Fn         func() bool
+		Map        map[string]string
+	}
+	params := queryParams{
+		BoolValues: []bool{true, false},
+		Fn:         func() bool { return true },
+		Map:        map[string]string{"key1": "value1"},
+	}
+
+	want := "cache-key-true,false--"
+	got := c.PermutatedKey("cache-key", params)
+
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)
 	}

@@ -8,7 +8,7 @@ import (
 func (c *Client[T]) refresh(key string, fetchFn FetchFn[T]) {
 	response, err := fetchFn(context.Background())
 	if err != nil {
-		if c.storeMisses && errors.Is(err, ErrStoreMissingRecord) {
+		if c.storeMissingRecords && errors.Is(err, ErrStoreMissingRecord) {
 			c.SetMissing(key, response, true)
 		}
 		if errors.Is(err, ErrDeleteRecord) {
@@ -38,11 +38,11 @@ func (c *Client[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn
 			continue
 		}
 
-		if !c.storeMisses && !okResponse && okCache {
+		if !c.storeMissingRecords && !okResponse && okCache {
 			c.Delete(keyFn(id))
 		}
 
-		if c.storeMisses && !okResponse {
+		if c.storeMissingRecords && !okResponse {
 			c.SetMissing(keyFn(id), v, true)
 		}
 	}

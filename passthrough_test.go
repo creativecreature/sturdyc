@@ -2,6 +2,7 @@ package sturdyc_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestFullPassthrough(t *testing.T) {
+func TestPassthrough(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -33,9 +34,9 @@ func TestFullPassthrough(t *testing.T) {
 	}
 
 	for i := 0; i < numPassthroughs; i++ {
-		res, err := sturdyc.Passthrough(ctx, c, id, fetchObserver.Fetch)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
+		res, passthroughErr := sturdyc.Passthrough(ctx, c, id, fetchObserver.Fetch)
+		if passthroughErr != nil {
+			t.Fatalf("expected no error, got %v", passthroughErr)
 		}
 
 		if res != "value1" {
@@ -48,60 +49,21 @@ func TestFullPassthrough(t *testing.T) {
 	}
 
 	fetchObserver.AssertFetchCount(t, numPassthroughs+1)
-}
 
-func TestHalfPassthrough(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	capacity := 5
-	numShards := 2
-	ttl := time.Minute
-	evictionPercentage := 10
-	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(time.Hour, time.Hour*2, time.Minute, true),
-		sturdyc.WithPassthroughPercentage(50),
-	)
-
-	id := "1"
-	numPassthroughs := 100
-	fetchObserver := NewFetchObserver(numPassthroughs + 1)
-	fetchObserver.Response(id)
-
-	res, err := sturdyc.Passthrough(ctx, c, id, fetchObserver.Fetch)
+	fetchObserver.Clear()
+	fetchObserver.Err(errors.New("error"))
+	cachedRes, err := sturdyc.Passthrough(ctx, c, id, fetchObserver.Fetch)
+	<-fetchObserver.FetchCompleted
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatal(err)
 	}
-	if res != "value1" {
-		t.Errorf("expected value1, got %v", res)
+	if cachedRes != "value1" {
+		t.Errorf("expected value1, got %v", cachedRes)
 	}
-
-	for i := 0; i < numPassthroughs; i++ {
-		res, err := sturdyc.Passthrough(ctx, c, id, fetchObserver.Fetch)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		if res != "value1" {
-			t.Errorf("expected value1, got %v", res)
-		}
-	}
-
-	// It's not possible to know how many requests we'll let through. We expect
-	// half, which would be 50, but let's use 15 as a margin of safety because
-	// we can't control the randomness.
-	safetyMargin := 15
-	for i := 0; i < (numPassthroughs/2)-safetyMargin; i++ {
-		<-fetchObserver.FetchCompleted
-	}
-
-	// We'll also do a short sleep just to ensure there are no more refreshes happening.
-	time.Sleep(time.Millisecond * 50)
-	fetchObserver.AssertMinFetchCount(t, (numPassthroughs/2)-safetyMargin)
-	fetchObserver.AssertMaxFetchCount(t, (numPassthroughs/2)+safetyMargin)
+	fetchObserver.AssertFetchCount(t, numPassthroughs+2)
 }
 
-func TestFullPassthroughBatch(t *testing.T) {
+func TestPassthroughBatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -125,9 +87,9 @@ func TestFullPassthroughBatch(t *testing.T) {
 	}
 
 	for i := 0; i < numPassthroughs; i++ {
-		res, err := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
+		res, passthroughErr := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+		if passthroughErr != nil {
+			t.Fatalf("expected no error, got %v", passthroughErr)
 		}
 		if !cmp.Equal(res, map[string]string{"1": "value1", "2": "value2", "3": "value3"}) {
 			t.Errorf("expected value1, value2, value3, got %v", res)
@@ -139,53 +101,16 @@ func TestFullPassthroughBatch(t *testing.T) {
 	}
 
 	fetchObserver.AssertFetchCount(t, numPassthroughs+1)
-}
 
-func TestHalfPassthroughBatch(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	capacity := 5
-	numShards := 2
-	ttl := time.Minute
-	evictionPercentage := 10
-	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(time.Hour, time.Hour*2, time.Minute, true),
-		sturdyc.WithPassthroughPercentage(50),
-	)
-
-	idBatch := []string{"1", "2", "3"}
-	numPassthroughs := 100
-	fetchObserver := NewFetchObserver(numPassthroughs + 1)
-	fetchObserver.BatchResponse(idBatch)
-
-	res, err := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	fetchObserver.Clear()
+	fetchObserver.Err(errors.New("error"))
+	cachedRes, err := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	<-fetchObserver.FetchCompleted
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatal(err)
 	}
-	if !cmp.Equal(res, map[string]string{"1": "value1", "2": "value2", "3": "value3"}) {
-		t.Errorf("expected value1, value2, value3, got %v", res)
+	if !cmp.Equal(cachedRes, map[string]string{"1": "value1", "2": "value2", "3": "value3"}) {
+		t.Errorf("expected value1, value2, value3, got %v", cachedRes)
 	}
-
-	for i := 0; i < numPassthroughs; i++ {
-		res, err := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if !cmp.Equal(res, map[string]string{"1": "value1", "2": "value2", "3": "value3"}) {
-			t.Errorf("expected value1, value2, value3, got %v", res)
-		}
-	}
-
-	// It's not possible to know how many requests we'll let through. We expect
-	// half, which would be 50, but let's use 15 as a margin of safety.
-	safetyMargin := 15
-	for i := 0; i < (numPassthroughs/2)-safetyMargin; i++ {
-		<-fetchObserver.FetchCompleted
-	}
-
-	// We'll also do a short sleep just to ensure there are no more refreshes happening.
-	time.Sleep(time.Millisecond * 50)
-	fetchObserver.AssertMinFetchCount(t, (numPassthroughs/2)-safetyMargin)
-	fetchObserver.AssertMaxFetchCount(t, (numPassthroughs/2)+safetyMargin)
+	fetchObserver.AssertFetchCount(t, numPassthroughs+2)
 }

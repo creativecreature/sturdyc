@@ -37,21 +37,18 @@ type Config struct {
 	evictionInterval time.Duration
 	metricsRecorder  MetricsRecorder
 
-	refreshesEnabled bool
-	minRefreshTime   time.Duration
-	maxRefreshTime   time.Duration
-	retryBaseDelay   time.Duration
-	storeMisses      bool
+	refreshInBackground bool
+	minRefreshTime      time.Duration
+	maxRefreshTime      time.Duration
+	retryBaseDelay      time.Duration
+	storeMissingRecords bool
 
 	bufferRefreshes       bool
 	batchMutex            sync.Mutex
-	batchSize             int
+	bufferSize            int
 	bufferTimeout         time.Duration
 	bufferPermutationIDs  map[string][]string
 	bufferPermutationChan map[string]chan<- []string
-
-	passthroughPercentage int
-	passthroughBuffering  bool
 
 	useRelativeTimeKeyFormat bool
 	keyTruncation            time.Duration
@@ -84,10 +81,9 @@ func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage i
 
 	// Create a default configuration, and then apply the options.
 	cfg := &Config{
-		clock:                 NewClock(),
-		passthroughPercentage: 100,
-		evictionInterval:      ttl / time.Duration(numShards),
-		getSize:               client.Size,
+		clock:            NewClock(),
+		evictionInterval: ttl / time.Duration(numShards),
+		getSize:          client.Size,
 	}
 	// Apply the options to the configuration.
 	client.Config = cfg
@@ -159,6 +155,16 @@ func (c *Client[T]) Get(key string) (T, bool) {
 	val, ok, ignore, _ := shard.get(key)
 	c.reportCacheHits(ok)
 	return val, ok && !ignore
+}
+
+func (c *Client[T]) GetMany(ids []string, keyFn KeyFn) map[string]T {
+	records := make(map[string]T, len(ids))
+	for _, id := range ids {
+		if value, ok := c.Get(keyFn(id)); ok {
+			records[id] = value
+		}
+	}
+	return records
 }
 
 // SetMissing writes a single value to the cache. Returns true if it triggered an eviction.

@@ -63,7 +63,8 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 
 	// The cache is going to have a 2 second TTL, and the first refresh should happen within a second.
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, refreshRetryInterval),
+		sturdyc.WithMissingRecordStorage(),
 		sturdyc.WithClock(clock),
 	)
 
@@ -112,7 +113,8 @@ func TestGetFetchRefreshRetries(t *testing.T) {
 	clock := sturdyc.NewTestClock(time.Now())
 
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryInterval, true),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryInterval),
+		sturdyc.WithMissingRecordStorage(),
 		sturdyc.WithClock(clock),
 	)
 
@@ -165,7 +167,8 @@ func TestGetFetchMissingRecord(t *testing.T) {
 	clock := sturdyc.NewTestClock(time.Now())
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
 		sturdyc.WithClock(clock),
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryInterval, true),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryInterval),
+		sturdyc.WithMissingRecordStorage(),
 	)
 
 	fetchObserver := NewFetchObserver(1)
@@ -261,7 +264,8 @@ func TestBatchGetFetchNilMapMissingRecords(t *testing.T) {
 	retryInterval := time.Second
 	clock := sturdyc.NewTestClock(time.Now())
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryInterval, true),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryInterval),
+		sturdyc.WithMissingRecordStorage(),
 		sturdyc.WithClock(clock),
 	)
 
@@ -307,7 +311,8 @@ func TestGetFetchBatchRetries(t *testing.T) {
 	retryInterval := time.Second
 	clock := sturdyc.NewTestClock(time.Now())
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, retryInterval, true),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryInterval),
+		sturdyc.WithMissingRecordStorage(),
 		sturdyc.WithClock(clock),
 	)
 	fetchObserver := NewFetchObserver(6)
@@ -413,7 +418,8 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	maxRefreshDelay := time.Millisecond * 1000
 	refreshRetryInterval := time.Millisecond * 10
 	c := sturdyc.New[string](capacity, shards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, refreshRetryInterval),
+		sturdyc.WithMissingRecordStorage(),
 		sturdyc.WithClock(clock),
 		sturdyc.WithMetrics(newTestMetricsRecorder(shards)),
 	)
@@ -486,7 +492,7 @@ func TestGetFetchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
 	refreshRetryInterval := time.Millisecond * 10
 
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, false),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, refreshRetryInterval),
 		sturdyc.WithClock(clock),
 	)
 
@@ -531,7 +537,8 @@ func TestGetFetchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	refreshRetryInterval := time.Millisecond * 10
 
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, refreshRetryInterval),
+		sturdyc.WithMissingRecordStorage(),
 		sturdyc.WithClock(clock),
 	)
 
@@ -582,7 +589,7 @@ func TestGetFetchBatchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T)
 	refreshRetryInterval := time.Millisecond * 10
 
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, false),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, refreshRetryInterval),
 		sturdyc.WithClock(clock),
 	)
 
@@ -628,7 +635,8 @@ func TestGetFetchBatchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	refreshRetryInterval := time.Millisecond * 10
 
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithStampedeProtection(minRefreshDelay, maxRefreshDelay, refreshRetryInterval, true),
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, refreshRetryInterval),
+		sturdyc.WithMissingRecordStorage(),
 		sturdyc.WithClock(clock),
 	)
 
