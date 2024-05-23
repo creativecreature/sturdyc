@@ -1133,6 +1133,6 @@ func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
 ```
 
 With this setup, `sturdyc` is going to handle request deduplication, refresh
-buffering, and cache key permutations. You are going to get efficiency gain by
+buffering, and cache key permutations. You are going to gain efficiency by
 enabling batch refreshes, and latency improvements whenever you're able to
 serve from memory.
