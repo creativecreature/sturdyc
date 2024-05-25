@@ -31,14 +31,14 @@ func handleSlice(v reflect.Value) string {
 func extractPermutation(cacheKey string) string {
 	idIndex := strings.LastIndex(cacheKey, idPrefix+"-")
 
-	// "ID-" not found, return the original cache key.
+	// "STURDYC_ID-" not found, return the original cache key.
 	if idIndex == -1 {
 		return cacheKey
 	}
 
-	// Find the last "-" before "ID-" to ensure we include "ID-" in the result
+	// Find the last "-" before "STURDYC_ID-" to ensure we include "STURDYC_ID-" in the result
 	lastDashIndex := strings.LastIndex(cacheKey[:idIndex], "-")
-	// "-" not found before "ID-", return original string
+	// "-" not found before "STURDYC_ID-", return original string
 	if lastDashIndex == -1 {
 		return cacheKey
 	}
@@ -112,9 +112,6 @@ func (c *Client[T]) handleStruct(permutationStruct interface{}) string {
 
 		//nolint:exhaustive // We don't need special logic for every kind.
 		switch field.Kind() {
-		// All of these types makes for bad keys.
-		case reflect.Map, reflect.Func, reflect.Chan, reflect.Interface, reflect.UnsafePointer:
-			continue
 		case reflect.Slice:
 			if field.IsNil() {
 				str += "nil"
@@ -126,6 +123,9 @@ func (c *Client[T]) handleStruct(permutationStruct interface{}) string {
 			if field.Type() == reflect.TypeOf(time.Time{}) {
 				str += c.handleTime(field)
 			}
+			continue
+		// All of these types makes for bad keys.
+		case reflect.Map, reflect.Func, reflect.Chan, reflect.Interface, reflect.UnsafePointer:
 			continue
 		default:
 			str += fmt.Sprintf("%v", field.Interface())

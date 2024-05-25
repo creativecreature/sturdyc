@@ -204,3 +204,12 @@ func (c *Client[T]) Delete(key string) {
 	shard := c.getShard(key)
 	shard.delete(key)
 }
+
+// NumKeysInflight returns the number of keys that are currently being fetched.
+func (c *Client[T]) NumKeysInflight() int {
+	c.inFlightMutex.Lock()
+	defer c.inFlightMutex.Unlock()
+	c.inFlightBatchMutex.Lock()
+	defer c.inFlightBatchMutex.Unlock()
+	return len(c.inFlightMap) + len(c.inFlightBatchMap)
+}

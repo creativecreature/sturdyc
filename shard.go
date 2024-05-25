@@ -50,7 +50,7 @@ func (s *shard[T]) evictExpired() {
 }
 
 // forceEvict evicts a certain percentage of the entries in the shard
-// based on the expiration time. NOTE: Should be called with a lock.
+// based on the expiration time. Should be called with a lock.
 func (s *shard[T]) forceEvict() {
 	if s.metricsRecorder != nil {
 		s.metricsRecorder.ForcedEviction()

@@ -12,6 +12,149 @@ import (
 	"github.com/creativecreature/sturdyc"
 )
 
+func createBatchFn(prefix string, calls *atomic.Int32, cond *sync.Cond) sturdyc.BatchFetchFn[string] {
+	return func(_ context.Context, ids []string) (map[string]string, error) {
+		calls.Add(1)
+		vals := make(map[string]string, len(ids))
+		for _, id := range ids {
+			vals[id] = prefix + "-" + id
+		}
+
+		cond.L.Lock()
+		cond.Wait()
+		cond.L.Unlock()
+
+		return vals, nil
+	}
+}
+
+func TestBatchRequestsForMissingKeysGetDeduplicated(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	capacity := 10000
+	numShards := 100
+	ttl := time.Minute
+	evictionPercentage := 10
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
+
+	var calls atomic.Int32
+	cond := sync.NewCond(&sync.Mutex{})
+
+	for i := 0; i < 10; i++ {
+		ids := make([]string, 0, 10)
+		for j := 0; j < 10; j++ {
+			ids = append(ids, strconv.Itoa(i*10+j))
+		}
+
+		// Fetch the batch for 5 different sets of key prefixes. We're doing this to ensure
+		// that the responses don't get scrambled. The in-flight tracking has to operate with
+		// both the IDs and keys, and messing that up would be devastating.
+		for j := 0; j < 5; j++ {
+			keyPrefix := "foo" + strconv.Itoa(j)
+			keyFn := c.BatchKeyFn(keyPrefix)
+			batchFn := createBatchFn(keyPrefix, &calls, cond)
+			go c.GetFetchBatch(ctx, ids, keyFn, batchFn)
+		}
+	}
+
+	// We need to make sure that these batches are in-flight before we make any more requests.
+	time.Sleep(500 * time.Millisecond)
+
+	if c.NumKeysInflight() != 500 {
+		t.Fatalf("expected 500 keys in-flight; got %d", c.NumKeysInflight())
+	}
+
+	// Now, while these batches are in-flight, I'm going to create additional requests for the same IDs in a loop.
+	// On each iteration, I'm going to randomize five IDs between 0 and 99. This ensures that new requests are able
+	// to pick IDs from any of the in-flight batches, and then merge the response.
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(5)
+		for j := 0; j < 5; j++ {
+			keyPrefix := "foo" + strconv.Itoa(j)
+			keyFn := c.BatchKeyFn(keyPrefix)
+			batchFn := createBatchFn(keyPrefix, &calls, cond)
+
+			// We are going to get a few duplicates here too which the cache should be able to handle.
+			ids := make([]string, 0, 5)
+			for k := 0; k < 5; k++ {
+				ids = append(ids, strconv.Itoa(rand.IntN(99)))
+			}
+
+			go func() {
+				res, err := c.GetFetchBatch(ctx, ids, keyFn, batchFn)
+				if err != nil {
+					t.Errorf("expected no error got %v", err)
+				}
+
+				for _, id := range ids {
+					want := keyPrefix + "-" + id
+					if got, ok := res[id]; !ok || got != want {
+						t.Errorf("expected %s got %s", want, got)
+					}
+				}
+				wg.Done()
+			}()
+		}
+	}
+
+	// Give the goroutines some time to start.
+	time.Sleep(500 * time.Millisecond)
+
+	// Assert that none of the requests above created any additional in-flight keys.
+	if c.NumKeysInflight() != 500 {
+		t.Fatalf("expected 500 keys in-flight; got %d", c.NumKeysInflight())
+	}
+
+	// Broadcast that it's time for the in-flight batches to resolve.
+	cond.Broadcast()
+	// Wait for all of the responses to get asserted.
+	wg.Wait()
+
+	// Assert that we only made 50 calls.
+	if got := calls.Load(); got != 50 {
+		t.Errorf("got %d calls; wanted 50", got)
+	}
+
+	// The keys are deleted in a background routine that needs to get a lock.
+	// Hence, to assert that they have been deleted properly, we'll have to give
+	// that a routine a chance to run.
+	time.Sleep(50 * time.Millisecond)
+	if c.NumKeysInflight() > 0 {
+		t.Errorf("expected no inflight keys; got %d", c.NumKeysInflight())
+	}
+}
+
+func TestInflightKeysAreRemovedForBatchRequestsThatPanic(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	capacity := 10000
+	numShards := 100
+	ttl := time.Minute
+	evictionPercentage := 10
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
+
+	batchFn := func(_ context.Context, _ []string) (map[string]string, error) {
+		panic("boom")
+	}
+	ids := []string{"1", "2", "3", "4", "5"}
+
+	_, err := c.GetFetchBatch(ctx, ids, c.BatchKeyFn("foo"), batchFn)
+	if err == nil {
+		t.Errorf("expected an error; got nil")
+	}
+
+	if c.NumKeysInflight() > 0 {
+		t.Errorf("expected no inflight keys; got %d", c.NumKeysInflight())
+	}
+
+	if c.Size() > 0 {
+		t.Errorf("expected no keys in cache; got %d", c.Size())
+	}
+}
+
 func TestRequestsForMissingKeysGetDeduplicated(t *testing.T) {
 	t.Parallel()
 
@@ -44,107 +187,42 @@ func TestRequestsForMissingKeysGetDeduplicated(t *testing.T) {
 		}()
 	}
 	time.Sleep(50 * time.Millisecond)
+	if c.NumKeysInflight() != 1 {
+		t.Errorf("expected 1 inflight key; got %d", c.NumKeysInflight())
+	}
 	ch <- "value1"
 	wg.Wait()
 	if got := calls.Load(); got != 1 {
 		t.Errorf("got %d calls; wanted 1", got)
 	}
-}
-
-func createBatchFn(calls *atomic.Int32, cond *sync.Cond) sturdyc.BatchFetchFn[int] {
-	return func(_ context.Context, ids []string) (map[string]int, error) {
-		calls.Add(1)
-		vals := make(map[string]int, len(ids))
-		for _, id := range ids {
-			val, err := strconv.Atoi(id)
-			if err != nil {
-				panic(err)
-			}
-			vals[id] = val
-		}
-
-		cond.L.Lock()
-		cond.Wait()
-		cond.L.Unlock()
-
-		return vals, nil
+	if c.NumKeysInflight() > 0 {
+		t.Errorf("expected no inflight keys; got %d", c.NumKeysInflight())
 	}
 }
 
-func TestBatchRequestsForMissingKeysGetDeduplicated(t *testing.T) {
+func TestInflightKeyIsRemovedIfTheRequestPanics(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	capacity := 200
-	numShards := 2
+	capacity := 10000
+	numShards := 100
 	ttl := time.Minute
 	evictionPercentage := 10
-	c := sturdyc.New[int](capacity, numShards, ttl, evictionPercentage)
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
 
-	// I'm going to start by creating 10 in-flight batches with 10 IDs each (0-99).
-	var calls atomic.Int32
-	cond := sync.NewCond(&sync.Mutex{})
-	keyFn := c.BatchKeyFn("foo")
-
-	for i := 0; i < 10; i++ {
-		go func() {
-			ids := make([]string, 0, 10)
-			for j := 0; j < 10; j++ {
-				ids = append(ids, strconv.Itoa(i*10+j))
-			}
-			c.GetFetchBatch(ctx, ids, keyFn, createBatchFn(&calls, cond))
-		}()
+	fetchFn := func(_ context.Context) (string, error) {
+		panic("boom")
 	}
-	// We need to make sure that these batches are in-flight before we make any more requests.
-	time.Sleep(500 * time.Millisecond)
-
-	// Now, while these batches are in-flight, I'm going to create additional requests for the same IDs in a loop.
-	// On each iteration, I'm going to randomize five IDs between 0 and 99. This ensures that new requests are able
-	// to pick IDs from any of the ten in-flight batches, and then merge the response.
-	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			// We are going to get a few duplicates here too which the cache should be able to handle.
-			ids := []string{
-				strconv.Itoa(rand.IntN(99)),
-				strconv.Itoa(rand.IntN(99)),
-				strconv.Itoa(rand.IntN(99)),
-				strconv.Itoa(rand.IntN(99)),
-				strconv.Itoa(rand.IntN(99)),
-			}
-			res, err := c.GetFetchBatch(ctx, ids, keyFn, createBatchFn(&calls, cond))
-			if err != nil {
-				t.Errorf("expected no error got %v", err)
-			}
-			for _, id := range ids {
-				val, ok := res[id]
-				if !ok {
-					t.Errorf("expected res to key %s", id)
-				}
-
-				intVal, err := strconv.Atoi(id)
-				if err != nil {
-					panic(err)
-				}
-
-				if intVal != val {
-					t.Errorf("expected value %d; got %d", intVal, val)
-				}
-			}
-			wg.Done()
-		}()
+	_, err := c.GetFetch(ctx, "key1", fetchFn)
+	if err == nil {
+		t.Errorf("expected an error; got nil")
 	}
 
-	// Give the goroutines some time to start.
-	time.Sleep(500 * time.Millisecond)
-	// Broadcast the condition to let the in-flight batches complete.
-	cond.Broadcast()
-	// Wait for all of the responses to get asserted.
-	wg.Wait()
+	if c.NumKeysInflight() > 0 {
+		t.Errorf("expected no inflight keys; got %d", c.NumKeysInflight())
+	}
 
-	// Assert that we only made 10 calls.
-	if got := calls.Load(); got != 10 {
-		t.Errorf("got %d calls; wanted 10", got)
+	if c.Size() > 0 {
+		t.Errorf("expected no keys in cache; got %d", c.Size())
 	}
 }

@@ -1,4 +1,4 @@
-# `sturdyc`: a caching library for building sturdy systemsreadme
+# `sturdyc`: a caching library for building sturdy systems
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/creativecreature/sturdyc.svg)](https://pkg.go.dev/github.com/creativecreature/sturdyc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/creativecreature/sturdyc/blob/master/LICENSE)

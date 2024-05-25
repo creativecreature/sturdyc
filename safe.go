@@ -2,7 +2,7 @@ package sturdyc
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 )
 
 // safeGo is a helper that prevents panics in any of the goroutines
@@ -11,8 +11,10 @@ func safeGo(fn func()) {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				//nolint:forbidigo // This should never panic, but we want to log it if it does.
-				fmt.Println(err)
+				// If we ever reach here it's because one of the functions that the user
+				// passed us panicked. I don't think packages should log like this, but
+				// failing silently here would make it an absolute nightmare to debug.
+				slog.Error("panic recovered: %v", err)
 			}
 		}()
 		fn()
@@ -23,21 +25,18 @@ func wrap[T, V any](fetchFn FetchFn[V]) FetchFn[T] {
 	return func(ctx context.Context) (T, error) {
 		res, err := fetchFn(ctx)
 		if err != nil {
-			var zero T
-			return zero, err
+			return *new(T), err
 		}
 		if val, ok := any(res).(T); ok {
 			return val, nil
 		}
-		var zero T
-		return zero, ErrInvalidType
+		return *new(T), ErrInvalidType
 	}
 }
 
 func unwrap[V, T any](val T, err error) (V, error) {
 	if err != nil {
-		var zero V
-		return zero, err
+		return *new(V), err
 	}
 
 	v, ok := any(val).(V)

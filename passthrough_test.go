@@ -14,14 +14,14 @@ func TestPassthrough(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	capacity := 5
-	numShards := 2
+	capacity := 10000
+	numShards := 100
 	ttl := time.Minute
 	evictionPercentage := 10
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
 
 	id := "1"
-	numPassthroughs := 100
+	numPassthroughs := 1000
 	fetchObserver := NewFetchObserver(numPassthroughs + 1)
 	fetchObserver.Response(id)
 
@@ -44,7 +44,7 @@ func TestPassthrough(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < numPassthroughs+1; i++ {
+	for i := 0; i < numPassthroughs; i++ {
 		<-fetchObserver.FetchCompleted
 	}
 
@@ -61,21 +61,24 @@ func TestPassthrough(t *testing.T) {
 		t.Errorf("expected value1, got %v", cachedRes)
 	}
 	fetchObserver.AssertFetchCount(t, numPassthroughs+2)
+	if c.NumKeysInflight() > 0 {
+		t.Errorf("expected no inflight keys, got %v", c.NumKeysInflight())
+	}
 }
 
 func TestPassthroughBatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	capacity := 100000
+	capacity := 10000
 	numShards := 100
 	ttl := time.Minute
 	evictionPercentage := 10
 	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
 
 	idBatch := []string{"1", "2", "3"}
-	numPassthroughs := 100
-	fetchObserver := NewFetchObserver(numPassthroughs + 1)
+	numPassthroughs := 200
+	fetchObserver := NewFetchObserver(numPassthroughs + 2)
 	fetchObserver.BatchResponse(idBatch)
 
 	res, err := sturdyc.PassthroughBatch(ctx, c, idBatch, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
@@ -94,13 +97,13 @@ func TestPassthroughBatch(t *testing.T) {
 		if !cmp.Equal(res, map[string]string{"1": "value1", "2": "value2", "3": "value3"}) {
 			t.Errorf("expected value1, value2, value3, got %v", res)
 		}
+		time.Sleep(2 * time.Millisecond)
 	}
 
-	for i := 0; i < numPassthroughs+1; i++ {
-		<-fetchObserver.FetchCompleted
-	}
-
-	fetchObserver.AssertFetchCount(t, numPassthroughs+1)
+	// We can't say exactly how many got through because there are multiple
+	// goroutines running and it requires a lock to remove an in-flight key.
+	fetchObserver.AssertMinFetchCount(t, numPassthroughs/2)
+	fetchObserver.AssertMaxFetchCount(t, numPassthroughs+1)
 
 	fetchObserver.Clear()
 	fetchObserver.Err(errors.New("error"))
@@ -113,4 +116,7 @@ func TestPassthroughBatch(t *testing.T) {
 		t.Errorf("expected value1, value2, value3, got %v", cachedRes)
 	}
 	fetchObserver.AssertFetchCount(t, numPassthroughs+2)
+	if c.NumKeysInflight() > 0 {
+		t.Errorf("expected no inflight keys, got %v", c.NumKeysInflight())
+	}
 }
