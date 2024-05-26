@@ -160,3 +160,16 @@ func (s *shard[T]) delete(key string) {
 	defer s.Unlock()
 	delete(s.entries, key)
 }
+
+func (s *shard[T]) keys() []string {
+	s.RLock()
+	defer s.RUnlock()
+	keys := make([]string, 0, len(s.entries))
+	for k, v := range s.entries {
+		if s.clock.Now().After(v.expiresAt) {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	return keys
+}

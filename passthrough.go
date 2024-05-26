@@ -33,7 +33,7 @@ func (c *Client[T]) PassthroughBatch(ctx context.Context, ids []string, keyFn Ke
 		return res, nil
 	}
 
-	values := c.GetMany(ids, keyFn)
+	values := c.GetManyKeyFn(ids, keyFn)
 	if len(values) > 0 {
 		return values, nil
 	}

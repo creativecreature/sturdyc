@@ -153,6 +153,7 @@ func (c *Client[T]) get(key string) (value T, exists, ignore, refresh bool) {
 	return val, exists, ignore, refresh
 }
 
+// Get retrieves a single value from the cache.
 func (c *Client[T]) Get(key string) (T, bool) {
 	shard := c.getShard(key)
 	val, ok, ignore, _ := shard.get(key)
@@ -160,7 +161,23 @@ func (c *Client[T]) Get(key string) (T, bool) {
 	return val, ok && !ignore
 }
 
-func (c *Client[T]) GetMany(ids []string, keyFn KeyFn) map[string]T {
+// GetMany retrieves multiple values from the cache.
+func (c *Client[T]) GetMany(keys []string) map[string]T {
+	records := make(map[string]T, len(keys))
+	for _, key := range keys {
+		if value, ok := c.Get(key); ok {
+			records[key] = value
+		}
+	}
+	return records
+}
+
+// GetManyKeyFn follows the same API as GetFetchBatch and PassthroughBatch.
+// You provide it with a slice of IDs and a keyFn, which is applied to create
+// the cache key. The returned map uses the IDs as keys instead of the cache key.
+// If you've used ScanKeys to retrieve the actual keys, you can retrieve the records
+// using GetMany instead.
+func (c *Client[T]) GetManyKeyFn(ids []string, keyFn KeyFn) map[string]T {
 	records := make(map[string]T, len(ids))
 	for _, id := range ids {
 		if value, ok := c.Get(keyFn(id)); ok {
@@ -170,27 +187,51 @@ func (c *Client[T]) GetMany(ids []string, keyFn KeyFn) map[string]T {
 	return records
 }
 
-// SetMissing writes a single value to the cache. Returns true if it triggered an eviction.
-func (c *Client[T]) SetMissing(key string, value T, isMissingRecord bool) bool {
-	shard := c.getShard(key)
-	return shard.set(key, value, isMissingRecord)
-}
-
 // Set writes a single value to the cache. Returns true if it triggered an eviction.
 func (c *Client[T]) Set(key string, value T) bool {
-	return c.SetMissing(key, value, false)
+	shard := c.getShard(key)
+	return shard.set(key, value, false)
 }
 
-// SetMany writes multiple values to the cache. Returns true if it triggered an eviction.
-func (c *Client[T]) SetMany(records map[string]T, cacheKeyFn KeyFn) bool {
+// StoreMissingRecord writes a single value to the cache. Returns true if it triggered an eviction.
+func (c *Client[T]) StoreMissingRecord(key string) bool {
+	shard := c.getShard(key)
+	return shard.set(key, *new(T), true)
+}
+
+// SetMany writes a map of key value pairs to the cache.
+func (c *Client[T]) SetMany(records map[string]T) bool {
 	var triggeredEviction bool
-	for id, value := range records {
-		evicted := c.SetMissing(cacheKeyFn(id), value, false)
+	for key, value := range records {
+		evicted := c.Set(key, value)
 		if evicted {
 			triggeredEviction = true
 		}
 	}
 	return triggeredEviction
+}
+
+// SetManyKeyFn follows the same API as GetFetchBatch and PassThroughBatch. It
+// takes a map of records where the keyFn is applied to each key in the map
+// before it's stored in the cache.
+func (c *Client[T]) SetManyKeyFn(records map[string]T, cacheKeyFn KeyFn) bool {
+	var triggeredEviction bool
+	for id, value := range records {
+		evicted := c.Set(cacheKeyFn(id), value)
+		if evicted {
+			triggeredEviction = true
+		}
+	}
+	return triggeredEviction
+}
+
+// ScanKeys returns a list of all keys in the cache.
+func (c *Client[T]) ScanKeys() []string {
+	keys := make([]string, 0, c.Size())
+	for _, shard := range c.shards {
+		keys = append(keys, shard.keys()...)
+	}
+	return keys
 }
 
 // Size returns the number of entries in the cache.
