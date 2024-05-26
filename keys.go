@@ -86,15 +86,20 @@ func (c *Client[T]) handleStruct(permutationStruct interface{}) string {
 	}
 
 	if v.Kind() != reflect.Struct {
-		panic("val must be a struct")
+		panic("permutationStruct must be a struct")
 	}
 
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 
-		// Check if the field is exported
+		// Skip unexported fields
 		if !field.CanInterface() {
-			continue // Skip unexported fields
+			message := fmt.Sprintf(
+				"sturdyc: permutationStruct contains unexported field: %s which won't be part of the cache key",
+				v.Type().Field(i).Name,
+			)
+			c.log.Warn(message)
+			continue
 		}
 
 		if i > 0 {

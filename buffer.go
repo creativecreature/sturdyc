@@ -29,12 +29,12 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 		c.batchMutex.Unlock()
 
 		// These IDs are the size we want, so we'll refresh them immediately.
-		safeGo(func() {
+		c.safeGo(func() {
 			c.refreshBatch(idsToRefresh, keyFn, fetchFn)
 		})
 
 		// We'll continue to process the remaining IDs recursively.
-		safeGo(func() {
+		c.safeGo(func() {
 			bufferBatchRefresh(c, overflowingIDs, keyFn, fetchFn)
 		})
 
@@ -55,7 +55,7 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 		case channel <- ids:
 			stop()
 		case <-timer:
-			safeGo(func() {
+			c.safeGo(func() {
 				bufferBatchRefresh(c, ids, keyFn, fetchFn)
 			})
 			return
@@ -70,7 +70,7 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 	c.bufferPermutationIDs[permutationString] = ids
 	c.batchMutex.Unlock()
 
-	safeGo(func() {
+	c.safeGo(func() {
 		timer, stop := c.clock.NewTimer(c.bufferTimeout)
 
 		for {
@@ -87,7 +87,7 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 				deleteBuffer(c, permutationString)
 				c.batchMutex.Unlock()
 
-				safeGo(func() {
+				c.safeGo(func() {
 					c.refreshBatch(permIDs, keyFn, fetchFn)
 				})
 				return
@@ -121,13 +121,13 @@ func bufferBatchRefresh[T any](c *Client[T], ids []string, keyFn KeyFn, fetchFn 
 				overflowingIDs := permIDs[c.bufferSize:]
 
 				// Refresh the first batch of IDs immediately.
-				safeGo(func() {
+				c.safeGo(func() {
 					c.refreshBatch(idsToRefresh, keyFn, fetchFn)
 				})
 
 				// If we exceeded the batch size, we'll continue to process the remaining IDs recursively.
 				if len(overflowingIDs) > 0 {
-					safeGo(func() {
+					c.safeGo(func() {
 						bufferBatchRefresh(c, overflowingIDs, keyFn, fetchFn)
 					})
 				}

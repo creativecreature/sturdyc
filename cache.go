@@ -2,6 +2,7 @@ package sturdyc
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -36,6 +37,7 @@ type Config struct {
 	clock            Clock
 	evictionInterval time.Duration
 	metricsRecorder  MetricsRecorder
+	log              Logger
 
 	refreshInBackground bool
 	minRefreshTime      time.Duration
@@ -84,6 +86,7 @@ func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage i
 		clock:            NewClock(),
 		evictionInterval: ttl / time.Duration(numShards),
 		getSize:          client.Size,
+		log:              slog.Default(),
 	}
 	// Apply the options to the configuration.
 	client.Config = cfg
