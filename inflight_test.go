@@ -146,6 +146,8 @@ func TestInflightKeysAreRemovedForBatchRequestsThatPanic(t *testing.T) {
 		t.Errorf("expected an error; got nil")
 	}
 
+	time.Sleep(50 * time.Millisecond)
+
 	if c.NumKeysInflight() > 0 {
 		t.Errorf("expected no inflight keys; got %d", c.NumKeysInflight())
 	}
