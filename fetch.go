@@ -43,7 +43,7 @@ func (c *Client[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]
 	value, ok, shouldIgnore, shouldRefresh := c.get(key)
 
 	if shouldRefresh {
-		safeGo(func() {
+		c.safeGo(func() {
 			c.refresh(key, fetchFn)
 		})
 	}
@@ -74,7 +74,7 @@ func (c *Client[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn
 
 	// If any records need to be refreshed, we'll do so in the background.
 	if len(idsToRefresh) > 0 {
-		safeGo(func() {
+		c.safeGo(func() {
 			if c.bufferRefreshes {
 				bufferBatchRefresh(c, idsToRefresh, keyFn, fetchFn)
 				return

@@ -2,19 +2,16 @@ package sturdyc
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 )
 
 // safeGo is a helper that prevents panics in any of the goroutines
 // that are running in the background from crashing the process.
-func safeGo(fn func()) {
+func (c *Client[T]) safeGo(fn func()) {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				// If we ever reach here it's because one of the functions that the user
-				// passed us panicked. I don't think packages should log like this, but
-				// failing silently here would make it an absolute nightmare to debug.
-				slog.Error("panic recovered: %v", err)
+				c.log.Error(fmt.Sprintf("sturdyc: panic recovered: %v", err))
 			}
 		}()
 		fn()
