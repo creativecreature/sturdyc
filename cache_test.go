@@ -2,6 +2,7 @@ package sturdyc_test
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -208,10 +209,80 @@ func TestSetMany(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		records[strconv.Itoa(i)] = i
 	}
-	c.SetMany(records, c.BatchKeyFn("key"))
+	c.SetMany(records)
 
 	if c.Size() != 10 {
 		t.Errorf("expected cache size to be 10, got %d", c.Size())
+	}
+
+	keys := c.ScanKeys()
+	if len(keys) != 10 {
+		t.Errorf("expected 10 keys, got %d", len(keys))
+	}
+	for _, key := range keys {
+		if _, ok := records[key]; !ok {
+			t.Errorf("expected key %s to be in the cache", key)
+		}
+	}
+}
+
+func TestSetManyKeyFn(t *testing.T) {
+	t.Parallel()
+
+	c := sturdyc.New[int](1000, 10, time.Hour, 5)
+
+	if c.Size() != 0 {
+		t.Errorf("expected cache size to be 0, got %d", c.Size())
+	}
+
+	records := make(map[string]int, 10)
+	for i := 0; i < 10; i++ {
+		records[strconv.Itoa(i)] = i
+	}
+	c.SetManyKeyFn(records, c.BatchKeyFn("foo"))
+
+	if c.Size() != 10 {
+		t.Errorf("expected cache size to be 10, got %d", c.Size())
+	}
+
+	keys := c.ScanKeys()
+	if len(keys) != 10 {
+		t.Errorf("expected 10 keys, got %d", len(keys))
+	}
+	for _, key := range keys {
+		if !strings.HasPrefix(key, "foo") {
+			t.Errorf("expected key %s to start with foo", key)
+		}
+	}
+}
+
+func TestGetMany(t *testing.T) {
+	t.Parallel()
+
+	c := sturdyc.New[int](1000, 10, time.Hour, 5)
+
+	if c.Size() != 0 {
+		t.Errorf("expected cache size to be 0, got %d", c.Size())
+	}
+
+	records := make(map[string]int, 10)
+	for i := 0; i < 10; i++ {
+		records[strconv.Itoa(i)] = i
+	}
+	c.SetMany(records)
+
+	keys := make([]string, 0, 10)
+	for key := range records {
+		keys = append(keys, key)
+	}
+
+	cacheHits := c.GetMany(keys)
+	if len(cacheHits) != 10 {
+		for key := range records {
+			if _, ok := cacheHits[key]; !ok {
+				t.Errorf("expected key %s to be in the cache", key)
+			}
+		}
 	}
 }
 

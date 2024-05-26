@@ -34,7 +34,7 @@ func makeCall[T, V any](ctx context.Context, c *Client[T], key string, fn FetchF
 
 	response, err := fn(ctx)
 	if err != nil && c.storeMissingRecords && errors.Is(err, ErrStoreMissingRecord) {
-		c.SetMissing(key, *new(T), true)
+		c.StoreMissingRecord(key)
 		call.err = ErrMissingRecord
 		return
 	}
@@ -52,7 +52,7 @@ func makeCall[T, V any](ctx context.Context, c *Client[T], key string, fn FetchF
 
 	call.err = nil
 	call.val = res
-	c.SetMissing(key, res, false)
+	c.Set(key, res)
 }
 
 func callAndCache[V, T any](ctx context.Context, c *Client[T], key string, fn FetchFn[V]) (V, error) {
@@ -107,7 +107,7 @@ func makeBatchCall[T, V any](ctx context.Context, c *Client[T], opts makeBatchCa
 	if c.storeMissingRecords && len(response) < len(opts.ids) {
 		for _, id := range opts.ids {
 			if _, ok := response[id]; !ok {
-				c.SetMissing(opts.keyFn(id), *new(T), true)
+				c.StoreMissingRecord(opts.keyFn(id))
 			}
 		}
 	}
@@ -118,7 +118,7 @@ func makeBatchCall[T, V any](ctx context.Context, c *Client[T], opts makeBatchCa
 		if !ok {
 			continue
 		}
-		c.SetMissing(opts.keyFn(id), v, false)
+		c.Set(opts.keyFn(id), v)
 		opts.call.val[id] = v
 	}
 }
