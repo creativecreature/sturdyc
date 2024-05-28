@@ -22,18 +22,22 @@ func wrap[T, V any](fetchFn FetchFn[V]) FetchFn[T] {
 	return func(ctx context.Context) (T, error) {
 		res, err := fetchFn(ctx)
 		if err != nil {
-			return *new(T), err
+			var zero T
+			return zero, err
 		}
-		if val, ok := any(res).(T); ok {
-			return val, nil
+		val, ok := any(res).(T)
+		if !ok {
+			var zero T
+			return zero, ErrInvalidType
 		}
-		return *new(T), ErrInvalidType
+		return val, nil
 	}
 }
 
 func unwrap[V, T any](val T, err error) (V, error) {
 	if err != nil {
-		return *new(V), err
+		var zero V
+		return zero, err
 	}
 
 	v, ok := any(val).(V)
@@ -53,9 +57,11 @@ func wrapBatch[T, V any](fetchFn BatchFetchFn[V]) BatchFetchFn[T] {
 
 		resT := make(map[string]T, len(resV))
 		for id, v := range resV {
-			if val, ok := any(v).(T); ok {
-				resT[id] = val
+			val, ok := any(v).(T)
+			if !ok {
+				return resT, ErrInvalidType
 			}
+			resT[id] = val
 		}
 
 		return resT, nil
@@ -65,9 +71,11 @@ func wrapBatch[T, V any](fetchFn BatchFetchFn[V]) BatchFetchFn[T] {
 func unwrapBatch[V, T any](values map[string]T, err error) (map[string]V, error) {
 	vals := make(map[string]V, len(values))
 	for id, v := range values {
-		if val, ok := any(v).(V); ok {
-			vals[id] = val
+		val, ok := any(v).(V)
+		if !ok {
+			return vals, ErrInvalidType
 		}
+		vals[id] = val
 	}
 	return vals, err
 }

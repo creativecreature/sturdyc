@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-const idPrefix = "STURDYC_ID"
-
 func handleSlice(v reflect.Value) string {
 	// If the value is a pointer to a slice, get the actual slice
 	if v.Kind() == reflect.Ptr {
@@ -29,16 +27,16 @@ func handleSlice(v reflect.Value) string {
 }
 
 func extractPermutation(cacheKey string) string {
-	idIndex := strings.LastIndex(cacheKey, idPrefix+"-")
+	idIndex := strings.LastIndex(cacheKey, "ID-")
 
-	// "STURDYC_ID-" not found, return the original cache key.
+	// "ID-" not found, return the original cache key.
 	if idIndex == -1 {
 		return cacheKey
 	}
 
-	// Find the last "-" before "STURDYC_ID-" to ensure we include "STURDYC_ID-" in the result
+	// Find the last "-" before "ID-" to ensure we include "ID-" in the result
 	lastDashIndex := strings.LastIndex(cacheKey[:idIndex], "-")
-	// "-" not found before "STURDYC_ID-", return original string
+	// "-" not found before "ID-", return original string
 	if lastDashIndex == -1 {
 		return cacheKey
 	}
@@ -78,21 +76,33 @@ func (c *Client[T]) handleTime(v reflect.Value) string {
 	return "empty-time"
 }
 
-func (c *Client[T]) handleStruct(permutationStruct interface{}) string {
-	str := ""
+// Permutated key takes a prefix, and a struct where the fields are
+// concatenated with in order to make a unique cache key. Passing
+// anything but a struct for "permutationStruct" will result in a panic.
+//
+// The cache will only use the EXPORTED fields of the struct to construct the key.
+// The permutation struct should be FLAT, with no nested structs. The fields can
+// be any of the basic types, as well as slices and time.Time values.
+func (c *Client[T]) PermutatedKey(prefix string, permutationStruct interface{}) string {
+	var sb strings.Builder
+	sb.WriteString(prefix)
+	sb.WriteString("-")
+
+	// Get the value of the interface
 	v := reflect.ValueOf(permutationStruct)
+
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
 
 	if v.Kind() != reflect.Struct {
-		panic("permutationStruct must be a struct")
+		panic("val must be a struct")
 	}
 
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
 
-		// Skip unexported fields
+		// Check if the field is exported, and if so skip it.
 		if !field.CanInterface() {
 			message := fmt.Sprintf(
 				"sturdyc: permutationStruct contains unexported field: %s which won't be part of the cache key",
@@ -103,58 +113,46 @@ func (c *Client[T]) handleStruct(permutationStruct interface{}) string {
 		}
 
 		if i > 0 {
-			str += "-"
+			sb.WriteString("-")
 		}
 
 		if field.Kind() == reflect.Ptr {
 			if field.IsNil() {
-				str += "nil"
+				sb.WriteString("nil")
 				continue
 			}
 			// If it's not nil we'll dereference the pointer to handle its value.
 			field = field.Elem()
 		}
 
-		//nolint:exhaustive // We don't need special logic for every kind.
+		//nolint:exhaustive // We only need special logic for slices and time.Time values.
 		switch field.Kind() {
 		case reflect.Slice:
 			if field.IsNil() {
-				str += "nil"
+				sb.WriteString("nil")
 			} else {
-				str += handleSlice(field)
+				sliceString := handleSlice(field)
+				sb.WriteString(sliceString)
 			}
 		case reflect.Struct:
-			// Only handle time.Time structs.
 			if field.Type() == reflect.TypeOf(time.Time{}) {
-				str += c.handleTime(field)
+				sb.WriteString(c.handleTime(field))
+				continue
 			}
-			continue
-		// All of these types makes for bad keys.
-		case reflect.Map, reflect.Func, reflect.Chan, reflect.Interface, reflect.UnsafePointer:
-			continue
+			sb.WriteString(fmt.Sprintf("%v", field.Interface()))
 		default:
-			str += fmt.Sprintf("%v", field.Interface())
+			sb.WriteString(fmt.Sprintf("%v", field.Interface()))
 		}
 	}
-	return str
-}
 
-// Permutated key takes a prefix, and a struct where the fields are
-// concatenated with in order to make a unique cache key. Passing
-// anything but a struct for "permutationStruct" will result in a panic.
-//
-// The cache will only use the EXPORTED fields of the struct to construct the key.
-// The permutation struct should be FLAT, with no nested structs. The fields can
-// be any of the basic types, as well as slices and time.Time values.
-func (c *Client[T]) PermutatedKey(prefix string, permutationStruct interface{}) string {
-	return prefix + "-" + c.handleStruct(permutationStruct)
+	return sb.String()
 }
 
 // BatchKeyFn provides a function for that can be used in conjunction with "GetFetchBatch".
 // It takes in a prefix, and returns a function that will append an ID suffix for each item.
 func (c *Client[T]) BatchKeyFn(prefix string) KeyFn {
 	return func(id string) string {
-		return fmt.Sprintf("%s-%s-%s", prefix, idPrefix, id)
+		return fmt.Sprintf("%s-ID-%s", prefix, id)
 	}
 }
 
@@ -169,6 +167,6 @@ func (c *Client[T]) BatchKeyFn(prefix string) KeyFn {
 func (c *Client[T]) PermutatedBatchKeyFn(prefix string, permutationStruct interface{}) KeyFn {
 	return func(id string) string {
 		key := c.PermutatedKey(prefix, permutationStruct)
-		return fmt.Sprintf("%s-%s-%s", key, idPrefix, id)
+		return fmt.Sprintf("%s-ID-%s", key, id)
 	}
 }

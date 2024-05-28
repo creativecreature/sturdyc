@@ -303,17 +303,14 @@ func TestBatchesAreGroupedByPermutations(t *testing.T) {
 	optsTwoBatch1 := []string{"4", "5"}
 	optsTwoBatch2 := []string{"6", "7", "8"}
 
-	// Request the first batch of records. We'll wait for a message on the
-	// refreshScheduledStream to be able to tell that the goroutine that is
-	// waiting for additional ids has been started. We'll also sleep for a brief
-	// moment to be sure that it's ready to receive messages on its channels.
-	// We're doing this just to be sure that one is launched first, because it
-	// should not receive any ids from the other two batches.
+	// Request the first batch of records. This should wait for additional IDs.
 	sturdyc.GetFetchBatch(ctx, c, optsOneIDs, c.PermutatedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
+
 	// Next, we're requesting ids 4-8 with the second options which should exceed the buffer size for that permutation.
 	fetchObserver.BatchResponse([]string{"4", "5", "6", "7", "8"})
 	sturdyc.GetFetchBatch(ctx, c, optsTwoBatch1, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
 	sturdyc.GetFetchBatch(ctx, c, optsTwoBatch2, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
+
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 3)
 	fetchObserver.AssertRequestedRecords(t, []string{"4", "5", "6", "7", "8"})
@@ -374,7 +371,7 @@ func TestLargeBatchesAreChunkedCorrectly(t *testing.T) {
 
 	// Next, we'll move the clock past the maxRefreshDelay. This should guarantee
 	// that the next records we request gets scheduled for a refresh.
-	clock.Add(maxRefreshDelay + time.Second)
+	clock.Add(maxRefreshDelay + time.Second*5)
 
 	// Now we are going to request 50 items at once. The batch size is set to
 	// 5, so this should be chunked internally into 10 separate batches.
@@ -387,4 +384,80 @@ func TestLargeBatchesAreChunkedCorrectly(t *testing.T) {
 		<-fetchObserver.FetchCompleted
 	}
 	fetchObserver.AssertFetchCount(t, 11)
+}
+
+func TestValuesAreUpdatedCorrectly(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	capacity := 1000
+	ttl := time.Hour
+	numShards := 100
+	evictionPercentage := 10
+	minRefreshDelay := time.Minute * 5
+	maxRefreshDelay := time.Minute * 10
+	refreshRetryInterval := time.Millisecond * 10
+	batchSize := 10
+	batchBufferTimeout := time.Minute
+	clock := sturdyc.NewTestClock(time.Now())
+
+	// The client will be configured as follows:
+	// - Records will be assigned a TTL of one hour.
+	// - If a record is re-requested within a random interval of 5 to
+	//   10 minutes, the client will queue a refresh for that record.
+	// - The queued refresh will be executed under two conditions:
+	//    1. The number of scheduled refreshes exceeds the specified 'batchSize'.
+	//    2. The 'batchBufferTimeout' threshold is exceeded.
+	client := sturdyc.New[any](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, refreshRetryInterval),
+		sturdyc.WithMissingRecordStorage(),
+		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
+		sturdyc.WithClock(clock),
+	)
+
+	type Foo struct {
+		Value string
+	}
+
+	records := []string{"1", "2", "3"}
+	res, _ := sturdyc.GetFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
+		values := make(map[string]Foo, len(ids))
+		for _, id := range ids {
+			values[id] = Foo{Value: "foo-" + id}
+		}
+		return values, nil
+	})
+
+	if res["1"].Value != "foo-1" {
+		t.Errorf("expected 'foo-1', got '%s'", res["1"].Value)
+	}
+
+	clock.Add(time.Minute * 45)
+	sturdyc.GetFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
+		values := make(map[string]Foo, len(ids))
+		for _, id := range ids {
+			values[id] = Foo{Value: "foo2-" + id}
+		}
+		return values, nil
+	})
+
+	time.Sleep(50 * time.Millisecond)
+	clock.Add(batchBufferTimeout + time.Second*10)
+	time.Sleep(50 * time.Millisecond)
+	clock.Add(time.Minute * 45)
+	time.Sleep(50 * time.Millisecond)
+	clock.Add(time.Minute * 5)
+	time.Sleep(50 * time.Millisecond)
+
+	resTwo, _ := sturdyc.GetFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
+		values := make(map[string]Foo, len(ids))
+		for _, id := range ids {
+			values[id] = Foo{Value: "foo3-" + id}
+		}
+		return values, nil
+	})
+
+	if resTwo["1"].Value != "foo2-1" {
+		t.Errorf("expected 'foo2-1', got '%s'", resTwo["1"].Value)
+	}
 }

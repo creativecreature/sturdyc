@@ -7,13 +7,13 @@
 [![codecov](https://codecov.io/gh/creativecreature/sturdyc/graph/badge.svg?token=CYSKW3Z7E6)](https://codecov.io/gh/creativecreature/sturdyc)
 
 `Sturdyc` is a highly concurrent cache that supports non-blocking reads and has
-a configurable number of shards that makes it possible to achieve parallel
-writes without any lock contention. The [xxhash](https://github.com/cespare/xxhash) algorithm
+a configurable number of shards that makes it possible to achieve writes without
+any lock contention. The [xxhash](https://github.com/cespare/xxhash) algorithm
 is used for efficient key distribution. Evictions are performed per shard based
 on recency at O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
 It has all the functionality you would expect from a caching library, but what
-**sets it apart** is all the functionality you get that has been designed to
+**sets it apart** is all the features you get that has been designed to
 make it easier to build highly _performant_ and _robust_ applications.
 
 You can enable *background refreshes* which instructs the cache to refresh the

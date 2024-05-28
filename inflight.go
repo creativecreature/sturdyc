@@ -116,6 +116,7 @@ func makeBatchCall[T, V any](ctx context.Context, c *Client[T], opts makeBatchCa
 	for id, record := range response {
 		v, ok := any(record).(T)
 		if !ok {
+			c.log.Error("sturdyc: invalid type for ID:" + id)
 			continue
 		}
 		c.Set(opts.keyFn(id), v)

@@ -196,7 +196,8 @@ func (c *Client[T]) Set(key string, value T) bool {
 // StoreMissingRecord writes a single value to the cache. Returns true if it triggered an eviction.
 func (c *Client[T]) StoreMissingRecord(key string) bool {
 	shard := c.getShard(key)
-	return shard.set(key, *new(T), true)
+	var zero T
+	return shard.set(key, zero, true)
 }
 
 // SetMany writes a map of key value pairs to the cache.
