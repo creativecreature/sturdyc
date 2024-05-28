@@ -52,8 +52,7 @@ func WithRefreshBuffering(bufferSize int, bufferDuration time.Duration) Option {
 		c.bufferRefreshes = true
 		c.bufferSize = bufferSize
 		c.bufferTimeout = bufferDuration
-		c.bufferPermutationIDs = make(map[string][]string)
-		c.bufferPermutationChan = make(map[string]chan<- []string)
+		c.permutationBufferMap = make(map[string]*buffer)
 	}
 }
 

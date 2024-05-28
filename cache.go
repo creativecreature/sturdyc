@@ -45,12 +45,11 @@ type Config struct {
 	retryBaseDelay      time.Duration
 	storeMissingRecords bool
 
-	bufferRefreshes       bool
-	batchMutex            sync.Mutex
-	bufferSize            int
-	bufferTimeout         time.Duration
-	bufferPermutationIDs  map[string][]string
-	bufferPermutationChan map[string]chan<- []string
+	bufferRefreshes      bool
+	batchMutex           sync.Mutex
+	bufferSize           int
+	bufferTimeout        time.Duration
+	permutationBufferMap map[string]*buffer
 
 	useRelativeTimeKeyFormat bool
 	keyTruncation            time.Duration

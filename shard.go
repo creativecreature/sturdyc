@@ -1,7 +1,6 @@
 package sturdyc
 
 import (
-	"math"
 	"math/rand/v2"
 	"sync"
 	"time"
@@ -102,8 +101,8 @@ func (s *shard[T]) get(key string) (val T, exists, ignore, refresh bool) {
 		}
 
 		// Update the "refreshAt" so no other goroutines attempts to refresh the same entry.
-		nextRefresh := math.Pow(2, float64(item.numOfRefreshRetries)) * float64(s.retryBaseDelay)
-		item.refreshAt = s.clock.Now().Add(time.Duration(nextRefresh))
+		nextRefresh := s.retryBaseDelay * (1 << item.numOfRefreshRetries)
+		item.refreshAt = s.clock.Now().Add(nextRefresh)
 		item.numOfRefreshRetries++
 
 		s.Unlock()
