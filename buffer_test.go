@@ -441,6 +441,7 @@ func TestValuesAreUpdatedCorrectly(t *testing.T) {
 		return values, nil
 	})
 
+	// Flush out timers and then allow some time for the goroutines to run.
 	time.Sleep(50 * time.Millisecond)
 	clock.Add(batchBufferTimeout + time.Second*10)
 	time.Sleep(50 * time.Millisecond)

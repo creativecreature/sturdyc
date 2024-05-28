@@ -24,7 +24,7 @@ func (c *Client[T]) newFlight(key string) *inFlightCall[T] {
 func makeCall[T, V any](ctx context.Context, c *Client[T], key string, fn FetchFn[V], call *inFlightCall[T]) {
 	defer func() {
 		if err := recover(); err != nil {
-			call.err = fmt.Errorf("panic recovered: %v", err)
+			call.err = fmt.Errorf("sturdyc: panic recovered: %v", err)
 		}
 		call.Done()
 		c.inFlightMutex.Lock()
@@ -149,7 +149,7 @@ func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], opts callBat
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
-					call.err = fmt.Errorf("panic recovered: %v", err)
+					call.err = fmt.Errorf("sturdyc: panic recovered: %v", err)
 				}
 				c.endBatchFlight(uniqueIDs, opts.keyFn, call)
 			}()
