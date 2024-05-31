@@ -76,12 +76,12 @@ func WithLog(log Logger) Option {
 
 func WithDistributedStorage(storage DistributedStorage) Option {
 	return func(c *Config) {
-		c.distributedStorage = storage
+		c.distributedStorage = &distributedStorage{storage}
 		c.distributedStaleStorage = false
 	}
 }
 
-func WithDistributedStorageStaleFallback(storage DistributedStorage, staleAfter time.Duration) Option {
+func WithDistributedStorageStaleFallback(storage DistributedStaleStorage, staleAfter time.Duration) Option {
 	return func(c *Config) {
 		c.distributedStorage = storage
 		c.distributedStaleStorage = true

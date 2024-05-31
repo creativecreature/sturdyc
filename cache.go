@@ -55,7 +55,7 @@ type Config struct {
 	keyTruncation            time.Duration
 	getSize                  func() int
 
-	distributedStorage       DistributedStorage
+	distributedStorage       DistributedStaleStorage
 	distributedStaleStorage  bool
 	distributedStaleDuration time.Duration
 }

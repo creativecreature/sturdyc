@@ -16,11 +16,26 @@ type distributedRecord[T any] struct {
 type DistributedStorage interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 	Set(key string, value []byte) error
-	Delete(ctx context.Context, key string) error
-
 	GetBatch(ctx context.Context, keys []string) (map[string][]byte, error)
 	SetBatch(ctx context.Context, records map[string][]byte) error
+}
+
+type DistributedStaleStorage interface {
+	DistributedStorage
+	Delete(ctx context.Context, key string) error
 	DeleteBatch(ctx context.Context, keys []string) error
+}
+
+type distributedStorage struct {
+	DistributedStorage
+}
+
+func (d *distributedStorage) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+func (d *distributedStorage) DeleteBatch(_ context.Context, _ []string) error {
+	return nil
 }
 
 func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) BatchFetchFn[T] {
@@ -104,6 +119,23 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 				}
 			})
 		}
+
+		// Write the records we retrieved to the distributed storage.
+		recordsToWrite := make(map[string][]byte, len(dataSourceRecords))
+		for id, record := range dataSourceRecords {
+			dRecord := distributedRecord[T]{CreatedAt: c.clock.Now(), Value: record}
+			recordBytes, marshalErr := json.Marshal(dRecord)
+			if marshalErr != nil {
+				c.log.Error(fmt.Sprintf("sturdyc: error marshalling record: %v", marshalErr))
+			}
+			recordsToWrite[keyFn(id)] = recordBytes
+		}
+		c.safeGo(func() {
+			err := c.distributedStorage.SetBatch(context.Background(), recordsToWrite)
+			if err != nil {
+				c.log.Error(fmt.Sprintf("sturdyc: error writing records to the distributed storage: %v", err))
+			}
+		})
 
 		maps.Copy(fresh, dataSourceRecords)
 		return fresh, nil
