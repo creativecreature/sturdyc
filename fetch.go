@@ -71,15 +71,16 @@ func GetFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn F
 // necessary, schedules this to be performed in the background.
 func (c *Client[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) (map[string]T, error) {
 	cachedRecords, cacheMisses, idsToRefresh := c.groupIDs(ids, keyFn)
+	wrappedFetch := c.distributedBatchFetch(keyFn, fetchFn)
 
 	// If any records need to be refreshed, we'll do so in the background.
 	if len(idsToRefresh) > 0 {
 		c.safeGo(func() {
 			if c.bufferRefreshes {
-				bufferBatchRefresh(c, idsToRefresh, keyFn, fetchFn)
+				bufferBatchRefresh(c, idsToRefresh, keyFn, wrappedFetch)
 				return
 			}
-			c.refreshBatch(idsToRefresh, keyFn, fetchFn)
+			c.refreshBatch(idsToRefresh, keyFn, wrappedFetch)
 		})
 	}
 
@@ -88,7 +89,7 @@ func (c *Client[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn
 		return cachedRecords, nil
 	}
 
-	callBatchOpts := callBatchOpts[T, T]{ids: cacheMisses, keyFn: keyFn, fn: fetchFn}
+	callBatchOpts := callBatchOpts[T, T]{ids: cacheMisses, keyFn: keyFn, fn: wrappedFetch}
 	response, err := callAndCacheBatch(ctx, c, callBatchOpts)
 	if err != nil {
 		if len(cachedRecords) > 0 {

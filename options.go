@@ -74,6 +74,21 @@ func WithLog(log Logger) Option {
 	}
 }
 
+func WithDistributedStorage(storage DistributedStorage) Option {
+	return func(c *Config) {
+		c.distributedStorage = storage
+		c.distributedStaleStorage = false
+	}
+}
+
+func WithDistributedStorageStaleFallback(storage DistributedStorage, staleAfter time.Duration) Option {
+	return func(c *Config) {
+		c.distributedStorage = storage
+		c.distributedStaleStorage = true
+		c.distributedStaleDuration = staleAfter
+	}
+}
+
 // validateConfig is a helper function that panics if the cache has been configured incorrectly.
 func validateConfig(capacity, numShards int, ttl time.Duration, evictionPercentage int, cfg *Config) {
 	if capacity <= 0 {

@@ -54,6 +54,10 @@ type Config struct {
 	useRelativeTimeKeyFormat bool
 	keyTruncation            time.Duration
 	getSize                  func() int
+
+	distributedStorage       DistributedStorage
+	distributedStaleStorage  bool
+	distributedStaleDuration time.Duration
 }
 
 // Client represents a cache client that can be used to store and retrieve values.

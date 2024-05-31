@@ -24,7 +24,8 @@ func (c *Client[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn
 		c.metricsRecorder.CacheBatchRefreshSize(len(ids))
 	}
 
-	response, err := fetchFn(context.Background(), ids)
+	wrappedFetch := c.distributedBatchFetch(keyFn, fetchFn)
+	response, err := wrappedFetch(context.Background(), ids)
 	if err != nil {
 		return
 	}
