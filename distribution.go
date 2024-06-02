@@ -38,6 +38,26 @@ func (d *distributedStorage) Delete(_ context.Context, _ string) {
 func (d *distributedStorage) DeleteBatch(_ context.Context, _ []string) {
 }
 
+func (c *Client[T]) marshalRecord(value T) ([]byte, error) {
+	record := distributedRecord[T]{CreatedAt: c.clock.Now(), Value: value, IsMissingRecord: false}
+	bytes, err := json.Marshal(record)
+	if err != nil {
+		c.log.Error(fmt.Sprintf("sturdyc: error marshalling record: %v", err))
+	}
+	return bytes, err
+}
+
+func (c *Client[T]) marshalMissingRecord() ([]byte, error) {
+	var missingRecord distributedRecord[T]
+	missingRecord.CreatedAt = c.clock.Now()
+	missingRecord.IsMissingRecord = true
+	bytes, err := json.Marshal(missingRecord)
+	if err != nil {
+		c.log.Error(fmt.Sprintf("sturdyc: error marshalling missing record: %v", err))
+	}
+	return bytes, err
+}
+
 func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] {
 	if c.distributedStorage == nil {
 		return fetchFn
@@ -62,26 +82,18 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 					return record, err
 				}
 				c.safeGo(func() {
-					distributedRecord := distributedRecord[T]{CreatedAt: c.clock.Now(), Value: record, IsMissingRecord: true}
-					bytes, err = json.Marshal(distributedRecord)
-					if err != nil {
-						c.log.Error(fmt.Sprintf("sturdyc: error marshalling missing record: %v", err))
-						return
+					if missingRecordBytes, missingRecordErr := c.marshalMissingRecord(); missingRecordErr == nil {
+						c.distributedStorage.Set(key, missingRecordBytes)
 					}
-					c.distributedStorage.Set(key, bytes)
 				})
 				return record, ErrMissingRecord
 			}
 
 			// At this point, we should have handled all the errors.
 			c.safeGo(func() {
-				distributedRecord := distributedRecord[T]{CreatedAt: c.clock.Now(), Value: record, IsMissingRecord: false}
-				bytes, err = json.Marshal(distributedRecord)
-				if err != nil {
-					c.log.Error(fmt.Sprintf("sturdyc: error marshalling record: %v", err))
-					return
+				if recordBytes, marshalErr := c.marshalRecord(record); marshalErr == nil {
+					c.distributedStorage.Set(key, recordBytes)
 				}
-				c.distributedStorage.Set(key, bytes)
 			})
 			return record, nil
 		}
@@ -107,13 +119,9 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 					c.log.Error("sturdyc: store missing record requested but missing record storage is not enabled")
 					return
 				}
-				distributedRecord := distributedRecord[T]{CreatedAt: c.clock.Now(), Value: fetchedRecord, IsMissingRecord: true}
-				bytes, unmarshalErr = json.Marshal(distributedRecord)
-				if unmarshalErr != nil {
-					c.log.Error(fmt.Sprintf("sturdyc: error marshalling missing record: %v", unmarshalErr))
-					return
+				if missingRecordBytes, missingRecordErr := c.marshalMissingRecord(); missingRecordErr == nil {
+					c.distributedStorage.Set(key, missingRecordBytes)
 				}
-				c.distributedStorage.Set(key, bytes)
 			})
 			return fetchedRecord, unmarshalErr
 		}
@@ -133,13 +141,9 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 		}
 
 		c.safeGo(func() {
-			distributedRecord := distributedRecord[T]{CreatedAt: c.clock.Now(), Value: fetchedRecord, IsMissingRecord: false}
-			marshalErr := json.Unmarshal(bytes, &distributedRecord)
-			if marshalErr != nil {
-				c.log.Error(fmt.Sprintf("sturdyc: error marshalling record: %v", marshalErr))
-				return
+			if recordBytes, marshalErr := c.marshalRecord(fetchedRecord); marshalErr == nil {
+				c.distributedStorage.Set(key, recordBytes)
 			}
-			c.distributedStorage.Set(key, bytes)
 		})
 		return fetchedRecord, nil
 	}
@@ -223,15 +227,9 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 				if c.storeMissingRecords {
 					missingRecords := make(map[string][]byte, len(idsToDelete))
 					for _, id := range idsToDelete {
-						var missingRecord distributedRecord[T]
-						missingRecord.CreatedAt = c.clock.Now()
-						missingRecord.IsMissingRecord = true
-						bytes, marshalErr := json.Marshal(missingRecord)
-						if marshalErr != nil {
-							c.log.Error(fmt.Sprintf("sturdyc: error marshalling missing record: %v", marshalErr))
-							continue
+						if bytes, err := c.marshalMissingRecord(); err == nil {
+							missingRecords[keyFn(id)] = bytes
 						}
-						missingRecords[keyFn(id)] = bytes
 					}
 					c.distributedStorage.SetBatch(context.Background(), missingRecords)
 					return
@@ -243,26 +241,17 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 		// Write the records we retrieved to the distributed storage.
 		recordsToWrite := make(map[string][]byte, len(dataSourceRecords))
 		for id, record := range dataSourceRecords {
-			dRecord := distributedRecord[T]{CreatedAt: c.clock.Now(), Value: record}
-			recordBytes, marshalErr := json.Marshal(dRecord)
-			if marshalErr != nil {
-				c.log.Error(fmt.Sprintf("sturdyc: error marshalling record: %v", marshalErr))
+			if recordBytes, marshalErr := c.marshalRecord(record); marshalErr == nil {
+				recordsToWrite[keyFn(id)] = recordBytes
 			}
-			recordsToWrite[keyFn(id)] = recordBytes
 		}
 
 		if c.storeMissingRecords {
 			for _, id := range idsToRefresh {
 				if _, ok := dataSourceRecords[id]; !ok {
-					var missingRecord distributedRecord[T]
-					missingRecord.CreatedAt = c.clock.Now()
-					missingRecord.IsMissingRecord = true
-					bytes, marshalErr := json.Marshal(missingRecord)
-					if marshalErr != nil {
-						c.log.Error(fmt.Sprintf("sturdyc: error marshalling missing record: %v", marshalErr))
-						continue
+					if bytes, err := c.marshalMissingRecord(); err == nil {
+						recordsToWrite[keyFn(id)] = bytes
 					}
-					recordsToWrite[keyFn(id)] = bytes
 				}
 			}
 		}
