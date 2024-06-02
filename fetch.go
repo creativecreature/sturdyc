@@ -39,12 +39,14 @@ func (c *Client[T]) groupIDs(ids []string, keyFn KeyFn) (hits map[string]T, miss
 // determines if the record needs refreshing and, if necessary, schedules this
 // task for background execution.
 func (c *Client[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
+	wrappedFetch := c.distributedFetch(key, fetchFn)
+
 	// Begin by checking if we have the item in our cache.
 	value, ok, shouldIgnore, shouldRefresh := c.get(key)
 
 	if shouldRefresh {
 		c.safeGo(func() {
-			c.refresh(key, fetchFn)
+			c.refresh(key, wrappedFetch)
 		})
 	}
 
@@ -56,7 +58,7 @@ func (c *Client[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]
 		return value, nil
 	}
 
-	return callAndCache(ctx, c, key, fetchFn)
+	return callAndCache(ctx, c, key, wrappedFetch)
 }
 
 // GetFetch is a convenience function that performs type assertion on the result of client.GetFetch.

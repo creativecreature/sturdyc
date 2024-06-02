@@ -14,38 +14,36 @@ type mockStorage struct {
 	records map[string][]byte
 }
 
-func (m *mockStorage) Get(_ context.Context, _ string) ([]byte, error) {
+func (m *mockStorage) Get(_ context.Context, _ string) ([]byte, bool) {
 	panic("not implemented")
 }
 
-func (m *mockStorage) Set(_ string, _ []byte) error {
+func (m *mockStorage) Set(_ string, _ []byte) {
 	panic("not implemented")
 }
 
-func (m *mockStorage) Delete(_ context.Context, _ string) error {
+func (m *mockStorage) Delete(_ context.Context, _ string) {
 	panic("not implemented")
 }
 
-func (m *mockStorage) GetBatch(_ context.Context, _ []string) (map[string][]byte, error) {
+func (m *mockStorage) GetBatch(_ context.Context, _ []string) map[string][]byte {
 	m.Lock()
 	defer m.Unlock()
-	return m.records, nil
+	return m.records
 }
 
-func (m *mockStorage) SetBatch(_ context.Context, records map[string][]byte) error {
+func (m *mockStorage) SetBatch(_ context.Context, records map[string][]byte) {
 	m.Lock()
 	defer m.Unlock()
 
 	if m.records == nil {
 		m.records = records
-		return nil
+		return
 	}
 
 	for key, value := range records {
 		m.records[key] = value
 	}
-
-	return nil
 }
 
 func (m *mockStorage) assertRecords(t *testing.T, ids []string, keyFn sturdyc.KeyFn) {
