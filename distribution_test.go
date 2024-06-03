@@ -18,7 +18,7 @@ func (m *mockStorage) Get(_ context.Context, _ string) ([]byte, bool) {
 	panic("not implemented")
 }
 
-func (m *mockStorage) Set(_ string, _ []byte) {
+func (m *mockStorage) Set(_ context.Context, _ string, _ []byte) {
 	panic("not implemented")
 }
 

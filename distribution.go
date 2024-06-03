@@ -17,7 +17,7 @@ type distributedRecord[T any] struct {
 
 type DistributedStorage interface {
 	Get(ctx context.Context, key string) ([]byte, bool)
-	Set(key string, value []byte)
+	Set(ctx context.Context, key string, value []byte)
 	GetBatch(ctx context.Context, keys []string) map[string][]byte
 	SetBatch(ctx context.Context, records map[string][]byte)
 }
@@ -70,7 +70,7 @@ func (c *Client[T]) unmarshalRecord(bytes []byte, key string) (distributedRecord
 func (c *Client[T]) writeMissingRecord(key string) {
 	c.safeGo(func() {
 		if missingRecordBytes, missingRecordErr := c.marshalMissingRecord(); missingRecordErr == nil {
-			c.distributedStorage.Set(key, missingRecordBytes)
+			c.distributedStorage.Set(context.Background(), key, missingRecordBytes)
 		}
 	})
 }
@@ -106,7 +106,7 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 		if fetchErr == nil {
 			c.safeGo(func() {
 				if recordBytes, marshalErr := c.marshalRecord(response); marshalErr == nil {
-					c.distributedStorage.Set(key, recordBytes)
+					c.distributedStorage.Set(context.Background(), key, recordBytes)
 				}
 			})
 			return response, nil
@@ -128,7 +128,7 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 		if hasStale {
 			c.safeGo(func() {
 				if recordBytes, marshalErr := c.marshalRecord(stale); marshalErr == nil {
-					c.distributedStorage.Set(key, recordBytes)
+					c.distributedStorage.Set(context.Background(), key, recordBytes)
 				}
 			})
 			return stale, nil
