@@ -172,7 +172,7 @@ func TestGetFetchMissingRecord(t *testing.T) {
 	)
 
 	fetchObserver := NewFetchObserver(1)
-	fetchObserver.Err(sturdyc.ErrStoreMissingRecord)
+	fetchObserver.Err(sturdyc.ErrNotFound)
 	_, err := sturdyc.GetFetch(ctx, c, "1", fetchObserver.Fetch)
 	if !errors.Is(err, sturdyc.ErrMissingRecord) {
 		t.Fatalf("expected ErrMissingRecord, got %v", err)
@@ -512,7 +512,7 @@ func TestGetFetchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
 	// Now we're going to go past the refresh delay, and return an error
 	// that indicates that the record has been deleted at the source.
 	fetchObserver.Clear()
-	fetchObserver.Err(sturdyc.ErrDeleteRecord)
+	fetchObserver.Err(sturdyc.ErrNotFound)
 	clock.Add(maxRefreshDelay + 1)
 	c.GetFetch(ctx, id, fetchObserver.Fetch)
 	<-fetchObserver.FetchCompleted
@@ -561,7 +561,7 @@ func TestGetFetchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	// Now we're going to go past the refresh delay, and return an error
 	// that indicates that the record should now be stored as missing.
 	fetchObserver.Clear()
-	fetchObserver.Err(sturdyc.ErrStoreMissingRecord)
+	fetchObserver.Err(sturdyc.ErrNotFound)
 	clock.Add(maxRefreshDelay + 1)
 	c.GetFetch(ctx, id, fetchObserver.Fetch)
 	<-fetchObserver.FetchCompleted

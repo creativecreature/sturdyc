@@ -67,47 +67,12 @@ func (c *Client[T]) unmarshalRecord(bytes []byte, key string) (distributedRecord
 	return record, unmarshalErr
 }
 
-func (c *Client[T]) handleMissingRecordErr(key string) {
-	if !c.storeMissingRecords {
-		c.log.Error("sturdyc: store missing record requested but missing record storage is not enabled")
-		return
-	}
-
+func (c *Client[T]) writeMissingRecord(key string) {
 	c.safeGo(func() {
 		if missingRecordBytes, missingRecordErr := c.marshalMissingRecord(); missingRecordErr == nil {
 			c.distributedStorage.Set(key, missingRecordBytes)
 		}
 	})
-}
-
-func (c *Client[T]) handleFetchErr(fetchErr error, key string) {
-	if errors.Is(fetchErr, ErrStoreMissingRecord) {
-		c.handleMissingRecordErr(key)
-	}
-
-	if errors.Is(fetchErr, ErrDeleteRecord) {
-		c.safeGo(func() {
-			c.distributedStorage.Delete(context.Background(), key)
-		})
-	}
-}
-
-func (c *Client[T]) handleCacheMiss(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
-	record, err := fetchFn(ctx)
-	if err != nil {
-		if errors.Is(err, ErrStoreMissingRecord) {
-			c.handleMissingRecordErr(key)
-			return record, ErrMissingRecord
-		}
-		return record, err
-	}
-
-	c.safeGo(func() {
-		if recordBytes, marshalErr := c.marshalRecord(record); marshalErr == nil {
-			c.distributedStorage.Set(key, recordBytes)
-		}
-	})
-	return record, nil
 }
 
 func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] {
@@ -116,37 +81,60 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 	}
 
 	return func(ctx context.Context) (T, error) {
-		bytes, ok := c.distributedStorage.Get(ctx, key)
-		if !ok {
-			return c.handleCacheMiss(ctx, key, fetchFn)
-		}
-
-		record, unmarshalErr := c.unmarshalRecord(bytes, key)
-		if unmarshalErr != nil {
-			return record.Value, unmarshalErr
-		}
-
-		// Check if the record is fresh enough to not need a refresh.
-		if !c.distributedStaleStorage || time.Since(record.CreatedAt) < c.distributedStaleDuration {
-			if record.IsMissingRecord {
-				return record.Value, ErrMissingRecord
+		var stale T
+		hasStale := false
+		if bytes, ok := c.distributedStorage.Get(ctx, key); ok {
+			record, unmarshalErr := c.unmarshalRecord(bytes, key)
+			if unmarshalErr != nil {
+				return record.Value, unmarshalErr
 			}
-			return record.Value, nil
+
+			// Check if the record is fresh enough to not need a refresh.
+			if !c.distributedStaleStorage || time.Since(record.CreatedAt) < c.distributedStaleDuration {
+				if record.IsMissingRecord {
+					return record.Value, ErrNotFound
+				}
+				return record.Value, nil
+			}
+
+			stale = record.Value
+			hasStale = true
 		}
 
 		// If it's not fresh enough, we'll retrieve it from the source.
-		fetchedRecord, fetchErr := fetchFn(ctx)
-		if fetchErr != nil {
-			c.handleFetchErr(fetchErr, key)
-			return fetchedRecord, fetchErr
+		response, fetchErr := fetchFn(ctx)
+		if fetchErr == nil {
+			c.safeGo(func() {
+				if recordBytes, marshalErr := c.marshalRecord(response); marshalErr == nil {
+					c.distributedStorage.Set(key, recordBytes)
+				}
+			})
+			return response, nil
 		}
 
-		c.safeGo(func() {
-			if recordBytes, marshalErr := c.marshalRecord(fetchedRecord); marshalErr == nil {
-				c.distributedStorage.Set(key, recordBytes)
+		if errors.Is(fetchErr, ErrNotFound) {
+			if c.storeMissingRecords {
+				c.writeMissingRecord(key)
+				return response, fetchErr
 			}
-		})
-		return fetchedRecord, nil
+			if hasStale {
+				c.safeGo(func() {
+					c.distributedStorage.Delete(context.Background(), key)
+				})
+			}
+			return response, fetchErr
+		}
+
+		if hasStale {
+			c.safeGo(func() {
+				if recordBytes, marshalErr := c.marshalRecord(stale); marshalErr == nil {
+					c.distributedStorage.Set(key, recordBytes)
+				}
+			})
+			return stale, nil
+		}
+
+		return response, fetchErr
 	}
 }
 
@@ -210,6 +198,18 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 		// Incase of an error, we'll proceed with the ones we got from the distributed storage.
 		if err != nil {
 			c.log.Error(fmt.Sprintf("sturdyc: error fetching records from the underlying data source. %v", err))
+			// Push the next refresh time in case of an error. This prevents unnecessary fetching from an unhealthy system.
+			if c.distributedStaleStorage {
+				recordsToWrite := make(map[string][]byte, len(stale))
+				for id, value := range stale {
+					if recordBytes, marshalErr := c.marshalRecord(value); marshalErr == nil {
+						recordsToWrite[keyFn(id)] = recordBytes
+					}
+				}
+				c.safeGo(func() {
+					c.distributedStorage.SetBatch(context.Background(), recordsToWrite)
+				})
+			}
 			maps.Copy(stale, fresh)
 			return stale, nil
 		}
@@ -223,7 +223,7 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 
 			if ok {
 				if recordBytes, marshalErr := c.marshalRecord(response); marshalErr == nil {
-					recordsToWrite[keyFn(id)] = recordBytes
+					recordsToWrite[key] = recordBytes
 				}
 				continue
 			}

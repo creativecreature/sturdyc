@@ -8,10 +8,10 @@ import (
 func (c *Client[T]) refresh(key string, fetchFn FetchFn[T]) {
 	response, err := fetchFn(context.Background())
 	if err != nil {
-		if c.storeMissingRecords && errors.Is(err, ErrStoreMissingRecord) {
+		if c.storeMissingRecords && errors.Is(err, ErrNotFound) {
 			c.StoreMissingRecord(key)
 		}
-		if errors.Is(err, ErrDeleteRecord) {
+		if !c.storeMissingRecords && errors.Is(err, ErrNotFound) {
 			c.Delete(key)
 		}
 		return
