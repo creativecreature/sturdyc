@@ -165,45 +165,48 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 			keys = append(keys, key)
 		}
 
-		// Group the records we got from the distributed storage into fresh/stale maps.
 		distributedRecords := c.distributedStorage.GetBatch(ctx, keys)
+		// Group the records we got from the distributed storage into fresh/stale maps.
 		fresh := make(map[string]T, len(ids))
 		stale := make(map[string]T, len(ids))
-		for key, bytes := range distributedRecords {
-			record, unmarshalErr := c.unmarshalRecord(bytes, key)
-			if unmarshalErr != nil {
-				continue
-			}
-
-			if record.IsMissingRecord {
-				continue
-			}
-
-			if !c.distributedStaleStorage {
-				c.Set(key, record.Value)
-				fresh[keyIDMap[key]] = record.Value
-				continue
-			}
-
-			if time.Since(record.CreatedAt) < c.distributedStaleDuration {
-				c.Set(key, record.Value)
-				fresh[keyIDMap[key]] = record.Value
-				continue
-			}
-
-			stale[keyIDMap[key]] = record.Value
-		}
 
 		// The IDs that we need to get from the underlying data source are the ones that are stale or missing.
-		idsToRefresh := make([]string, 0, len(ids)-len(fresh))
+		idsToRefresh := make([]string, 0, len(ids))
 		for _, id := range ids {
-			if _, ok := fresh[id]; ok {
+			key := keyFn(id)
+			bytes, ok := distributedRecords[key]
+			if !ok {
+				idsToRefresh = append(idsToRefresh, id)
 				continue
 			}
+
+			record, unmarshalErr := c.unmarshalRecord(bytes, key)
+			if unmarshalErr != nil {
+				idsToRefresh = append(idsToRefresh, id)
+				continue
+			}
+
+			// If distributedStaleStorage isn't enabled it means all records are fresh, otherwise checked the CreatedAt time.
+			if !c.distributedStaleStorage || time.Since(record.CreatedAt) < c.distributedStaleDuration {
+				// We never wan't to return missing records.
+				if !record.IsMissingRecord {
+					fresh[id] = record.Value
+				}
+				continue
+			}
+
 			idsToRefresh = append(idsToRefresh, id)
+			// We never wan't to return missing records.
+			if !record.IsMissingRecord {
+				stale[id] = record.Value
+			}
 		}
 
-		dataSourceRecords, err := fetchFn(ctx, idsToRefresh)
+		if len(idsToRefresh) == 0 {
+			return fresh, nil
+		}
+
+		dataSourceResponses, err := fetchFn(ctx, idsToRefresh)
 		// Incase of an error, we'll proceed with the ones we got from the distributed storage.
 		if err != nil {
 			c.log.Error(fmt.Sprintf("sturdyc: error fetching records from the underlying data source. %v", err))
@@ -212,54 +215,46 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 		}
 
 		// Next, we'll want to check if we should change any of the records to be missing or perform deletions.
-		idsToDelete := make([]string, 0)
+		recordsToWrite := make(map[string][]byte, len(dataSourceResponses))
+		keysToDelete := make([]string, 0, len(idsToRefresh)-len(dataSourceResponses))
 		for _, id := range idsToRefresh {
-			_, ok := dataSourceRecords[id]
-			_, okStale := stale[keyFn(id)]
-			if !ok && okStale {
-				idsToDelete = append(idsToDelete, keyFn(id))
+			key := keyFn(id)
+			response, ok := dataSourceResponses[id]
+
+			if ok {
+				if recordBytes, marshalErr := c.marshalRecord(response); marshalErr == nil {
+					recordsToWrite[keyFn(id)] = recordBytes
+				}
+				continue
+			}
+
+			// At this point, we know that we weren't able to retrieve this ID from the underlying data source.
+			if c.storeMissingRecords {
+				if bytes, err := c.marshalMissingRecord(); err == nil {
+					recordsToWrite[key] = bytes
+				}
+				continue
+			}
+
+			// If the record exists in the distributed storage but not at the underlying data source, we'll have to delete it.
+			if _, okStale := stale[id]; okStale {
+				keysToDelete = append(keysToDelete, key)
 			}
 		}
-		if len(idsToDelete) > 0 {
-			// We don't need the user to wait for these and we don't want panics to bring down the server.
+
+		if len(keysToDelete) > 0 {
 			c.safeGo(func() {
-				if c.storeMissingRecords {
-					missingRecords := make(map[string][]byte, len(idsToDelete))
-					for _, id := range idsToDelete {
-						if bytes, err := c.marshalMissingRecord(); err == nil {
-							missingRecords[keyFn(id)] = bytes
-						}
-					}
-					c.distributedStorage.SetBatch(context.Background(), missingRecords)
-					return
-				}
-				c.distributedStorage.DeleteBatch(context.Background(), idsToDelete)
+				c.distributedStorage.DeleteBatch(context.Background(), keysToDelete)
 			})
 		}
 
-		// Write the records we retrieved to the distributed storage.
-		recordsToWrite := make(map[string][]byte, len(dataSourceRecords))
-		for id, record := range dataSourceRecords {
-			if recordBytes, marshalErr := c.marshalRecord(record); marshalErr == nil {
-				recordsToWrite[keyFn(id)] = recordBytes
-			}
+		if len(recordsToWrite) > 0 {
+			c.safeGo(func() {
+				c.distributedStorage.SetBatch(context.Background(), recordsToWrite)
+			})
 		}
 
-		if c.storeMissingRecords {
-			for _, id := range idsToRefresh {
-				if _, ok := dataSourceRecords[id]; !ok {
-					if bytes, err := c.marshalMissingRecord(); err == nil {
-						recordsToWrite[keyFn(id)] = bytes
-					}
-				}
-			}
-		}
-
-		c.safeGo(func() {
-			c.distributedStorage.SetBatch(context.Background(), recordsToWrite)
-		})
-
-		maps.Copy(fresh, dataSourceRecords)
+		maps.Copy(fresh, dataSourceResponses)
 		return fresh, nil
 	}
 }
