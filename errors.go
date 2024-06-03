@@ -3,14 +3,16 @@ package sturdyc
 import "errors"
 
 var (
-	// ErrStoreMissingRecord should be returned from a FetchFn to indicate that a record is
-	// to be marked as missing by the cache. This will prevent continuous outgoing requests
-	// to the source. The record will still be refreshed like any other record, and if your
-	// FetchFn returns a value for it, the record will no longer be considered missing.
-	// Please note that this only applies to client.GetFetch and client.Passthrough. For
-	// client.GetFetchBatch and client.PassthroughBatch, this works implicitly if you return
+	// ErrNotFound should be returned from a FetchFn to indicate that a record is
+	// missing at the underlying data source. This helps the cache to determine
+	// if a record should be deleted or stored as a missing record if you have
+	// that functionality enabled. Missing records are refreshed like any other
+	// record, and if your FetchFn returns a value for it, the record will no
+	// longer be considered missing. Please note that this only applies to
+	// client.GetFetch and client.Passthrough. For client.GetFetchBatch and
+	// client.PassthroughBatch, this works implicitly if you return
 	// a map without the ID, and have store missing records enabled.
-	ErrNotFound = errors.New("sturdyc: TODO")
+	ErrNotFound = errors.New("sturdyc: err not found")
 	// ErrMissingRecord is returned by client.GetFetch and client.Passthrough when a record has been marked
 	// as missing. The cache will still try to refresh the record in the background if it's being requested.
 	ErrMissingRecord = errors.New("sturdyc: the record has been marked as missing in the cache")

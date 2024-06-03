@@ -16,7 +16,7 @@ It has all the functionality you would expect from a caching library, but what
 **sets it apart** is all the features you get that has been designed to
 make it easier to build highly _performant_ and _robust_ applications.
 
-You can enable *background refreshes* which instructs the cache to refresh the
+You can enable _background refreshes_ which instructs the cache to refresh the
 keys which are in active rotation, thereby preventing them from ever expiring.
 This can have a huge impact on an applications latency as you're able to
 continiously serve data from memory:
@@ -29,13 +29,13 @@ There is also excellent support for retrieving and caching data from batchable
 data sources. The cache disassembles the responses and then caches each record
 individually based on the permutations of the options with which it was
 fetched. To significantly reduce your applications outgoing requests to these
-data sources, you can instruct the cache to use *refresh buffering*:
+data sources, you can instruct the cache to use _refresh buffering_:
 
 ```go
 sturdyc.WithRefreshBuffering(idealBatchSize, batchBufferTimeout)
 ```
 
-`sturdyc` performs *in-flight* tracking for every key. This works for batching
+`sturdyc` performs _in-flight_ tracking for every key. This works for batching
 too where it's able to deduplicate a batch of cache misses, and then assemble
 the response by picking records from multiple in-flight requests.
 
@@ -482,9 +482,13 @@ fetchFn := func(_ context.Context) (string, error) {
 		if a.count == 1 {
 			return "value", nil
 		}
-		return "", sturdyc.ErrDeleteRecord
+		return "", sturdyc.ErrNotFound
 	}
 ```
+
+This tell's the cache that the record is no longer available at the underlying data source.
+Therefore, if this record is being fetched as a background refresh, the cache will quickly see
+if it has a record for this key, and subsequently delete it.
 
 If we run this application again we'll see that it works, and that we're no
 longer getting any cache hits. This leads to outgoing requests for every
@@ -505,11 +509,11 @@ iteration:
 2024/05/09 13:40:47 Failed to  retrieve the record from the cache.
 ```
 
-**Please note** that we only have to return the `sturdyc.ErrDeleteRecord` when
+**Please note** that we only have to return the `sturdyc.ErrNotFound` when
 we're using `GetFetch`. For `GetFetchBatch`, we'll simply omit the key from the
 map we're returning. I think this inconsistency is a little unfortunate, but it
-was the best API I could come up with. Having to return an error like this even
-if the call was successful felt like awkward boilerplate for maps:
+was the best API I could come up with. Having to return an error like this if
+just a single id wasn't found:
 
 ```go
 	batchFetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
@@ -517,12 +521,15 @@ if the call was successful felt like awkward boilerplate for maps:
 		for _, id := range cacheMisses {
 			// NOTE: Don't do this, it's just an example.
 			if response[id]; !id {
-                return response, sturdyc.ErrDeleteRecord
+                return response, sturdyc.ErrNotFound
             }
 		}
 		return response, nil
 	}
 ```
+
+and then have the cache swallow that error and return nil, felt much less
+intuitive.
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/refreshes)
 
@@ -548,8 +555,7 @@ returns a valid response, we'll see it propagate to our cache.
 
 To illustrate, I'll make some small modifications to the code from the previous
 example. The only thing I'm going to change is to make the API client return a
-`ErrStoreMissingRecord` error for the first three requests. This error informs
-the cache that it should mark this key as missing.
+`ErrNotFound` for the first three requests:
 
 ```go
 type API struct {
@@ -575,9 +581,8 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 }
 ```
 
-Next, we'll just have to enable this functionality, and check for the
-`ErrMissingRecord` error which the cache returns when a record has been marked
-as missing:
+Next, we'll just have to enable missing record storage which tell the cache
+that anytime it gets a `ErrNotFound` error it should mark the key as missing:
 
 ```go
 func main() {
@@ -593,6 +598,8 @@ func main() {
 	// ...
 	for i := 0; i < 100; i++ {
 		val, err := api.Get(context.Background(), "key")
+		// The cache returns ErrMissingRecord for any key that has been marked as missing.
+		// You can use this to exit-early, or return some type of default state.
 		if errors.Is(err, sturdyc.ErrMissingRecord) {
 			log.Println("Record does not exist.")
 		}
@@ -968,12 +975,14 @@ Imagine what a batch size of 50 would do for your applications performance!
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/buffering)
 
 # Passthrough
+
 There are times when you want to always retrieve the latest data from the
 source and only use the in-memory cache as a fallback. In such scenarios, you
 can use the `Passthrough` and `PassthroughBatch` functions. The cache will
 still perform in-flight request tracking and deduplicate your requests.
 
 # Distributed caching
+
 I've thought about adding this functionality internally because it would be
 really fun to build. However, there are already a lot of other projects that
 have done this exceptionally well.
@@ -1096,6 +1105,7 @@ You are also able to visualize evictions, forced evictions which occur when the
 cache has reached its capacity, as well as the distribution between the shards.
 
 # Generics
+
 Personally, I tend to create caches based on how frequently the data needs to
 be refreshed rather than what type of data it stores. I'll often have one
 transient cache which refreshes the data every 2-5 milliseconds, and another

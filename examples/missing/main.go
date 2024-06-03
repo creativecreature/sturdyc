@@ -25,7 +25,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		if a.count > 3 {
 			return "value", nil
 		}
-		return "", sturdyc.ErrStoreMissingRecord
+		return "", sturdyc.ErrNotFound
 	}
 	return a.GetFetch(ctx, key, fetchFn)
 }
