@@ -58,6 +58,58 @@ func (c *Client[T]) marshalMissingRecord() ([]byte, error) {
 	return bytes, err
 }
 
+func (c *Client[T]) unmarshalRecord(bytes []byte, key string) (distributedRecord[T], error) {
+	var record distributedRecord[T]
+	unmarshalErr := json.Unmarshal(bytes, &record)
+	if unmarshalErr != nil {
+		c.log.Error("sturdyc: error unmarshalling key: " + key)
+	}
+	return record, unmarshalErr
+}
+
+func (c *Client[T]) handleMissingRecordErr(key string) {
+	if !c.storeMissingRecords {
+		c.log.Error("sturdyc: store missing record requested but missing record storage is not enabled")
+		return
+	}
+
+	c.safeGo(func() {
+		if missingRecordBytes, missingRecordErr := c.marshalMissingRecord(); missingRecordErr == nil {
+			c.distributedStorage.Set(key, missingRecordBytes)
+		}
+	})
+}
+
+func (c *Client[T]) handleFetchErr(fetchErr error, key string) {
+	if errors.Is(fetchErr, ErrStoreMissingRecord) {
+		c.handleMissingRecordErr(key)
+	}
+
+	if errors.Is(fetchErr, ErrDeleteRecord) {
+		c.safeGo(func() {
+			c.distributedStorage.Delete(context.Background(), key)
+		})
+	}
+}
+
+func (c *Client[T]) handleCacheMiss(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
+	record, err := fetchFn(ctx)
+	if err != nil {
+		if errors.Is(err, ErrStoreMissingRecord) {
+			c.handleMissingRecordErr(key)
+			return record, ErrMissingRecord
+		}
+		return record, err
+	}
+
+	c.safeGo(func() {
+		if recordBytes, marshalErr := c.marshalRecord(record); marshalErr == nil {
+			c.distributedStorage.Set(key, recordBytes)
+		}
+	})
+	return record, nil
+}
+
 func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] {
 	if c.distributedStorage == nil {
 		return fetchFn
@@ -65,78 +117,27 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 
 	return func(ctx context.Context) (T, error) {
 		bytes, ok := c.distributedStorage.Get(ctx, key)
-
 		if !ok {
-			record, err := fetchFn(ctx)
-
-			// If the record does not exist in the distributed storage, and the fetch function
-			// returned an error that isn't ErrStoreMissingRecord we'll exit early.
-			if err != nil && !errors.Is(err, ErrStoreMissingRecord) {
-				return record, err
-			}
-
-			// Check if we should store the record as missing in the distributed storage too.
-			if err != nil && errors.Is(err, ErrStoreMissingRecord) {
-				if !c.storeMissingRecords {
-					c.log.Error("sturdyc: store missing record requested but missing record storage is not enabled")
-					return record, err
-				}
-				c.safeGo(func() {
-					if missingRecordBytes, missingRecordErr := c.marshalMissingRecord(); missingRecordErr == nil {
-						c.distributedStorage.Set(key, missingRecordBytes)
-					}
-				})
-				return record, ErrMissingRecord
-			}
-
-			// At this point, we should have handled all the errors.
-			c.safeGo(func() {
-				if recordBytes, marshalErr := c.marshalRecord(record); marshalErr == nil {
-					c.distributedStorage.Set(key, recordBytes)
-				}
-			})
-			return record, nil
+			return c.handleCacheMiss(ctx, key, fetchFn)
 		}
 
-		var record distributedRecord[T]
-		unmarshalErr := json.Unmarshal(bytes, &record)
+		record, unmarshalErr := c.unmarshalRecord(bytes, key)
 		if unmarshalErr != nil {
-			c.log.Error(fmt.Sprintf("sturdyc: error unmarshalling record: %v", unmarshalErr))
+			return record.Value, unmarshalErr
 		}
 
-		// Check if we could parse the record and it was fresh.
-		if unmarshalErr == nil && (!c.distributedStaleStorage || (time.Since(record.CreatedAt) < c.distributedStaleDuration)) {
+		// Check if the record is fresh enough to not need a refresh.
+		if !c.distributedStaleStorage || time.Since(record.CreatedAt) < c.distributedStaleDuration {
 			if record.IsMissingRecord {
 				return record.Value, ErrMissingRecord
 			}
 			return record.Value, nil
 		}
 
+		// If it's not fresh enough, we'll retrieve it from the source.
 		fetchedRecord, fetchErr := fetchFn(ctx)
-		if errors.Is(fetchErr, ErrStoreMissingRecord) {
-			c.safeGo(func() {
-				if !c.storeMissingRecords {
-					c.log.Error("sturdyc: store missing record requested but missing record storage is not enabled")
-					return
-				}
-				if missingRecordBytes, missingRecordErr := c.marshalMissingRecord(); missingRecordErr == nil {
-					c.distributedStorage.Set(key, missingRecordBytes)
-				}
-			})
-			return fetchedRecord, unmarshalErr
-		}
-
-		if errors.Is(fetchErr, ErrDeleteRecord) {
-			c.safeGo(func() {
-				c.distributedStorage.Delete(context.Background(), key)
-			})
-			return fetchedRecord, unmarshalErr
-		}
-
 		if fetchErr != nil {
-			if unmarshalErr == nil {
-				return record.Value, nil
-			}
+			c.handleFetchErr(fetchErr, key)
 			return fetchedRecord, fetchErr
 		}
 
@@ -169,10 +170,8 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 		fresh := make(map[string]T, len(ids))
 		stale := make(map[string]T, len(ids))
 		for key, bytes := range distributedRecords {
-			var record distributedRecord[T]
-			unmarshalErr := json.Unmarshal(bytes, &record)
+			record, unmarshalErr := c.unmarshalRecord(bytes, key)
 			if unmarshalErr != nil {
-				c.log.Error(fmt.Sprintf("sturdyc: error unmarshalling distributed record: %v", unmarshalErr))
 				continue
 			}
 
