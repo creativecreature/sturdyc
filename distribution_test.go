@@ -10,31 +10,51 @@ import (
 )
 
 type mockStorage struct {
+	getCount    int
+	setCount    int
+	deleteCount int
 	sync.Mutex
 	records map[string][]byte
 }
 
-func (m *mockStorage) Get(_ context.Context, _ string) ([]byte, bool) {
-	panic("not implemented")
+func (m *mockStorage) Get(_ context.Context, key string) ([]byte, bool) {
+	m.Lock()
+	defer m.Unlock()
+	m.getCount++
+
+	bytes, ok := m.records[key]
+	return bytes, ok
 }
 
-func (m *mockStorage) Set(_ context.Context, _ string, _ []byte) {
-	panic("not implemented")
+func (m *mockStorage) Set(_ context.Context, key string, bytes []byte) {
+	m.Lock()
+	defer m.Unlock()
+	m.setCount++
+
+	if m.records == nil {
+		m.records = make(map[string][]byte)
+	}
+	m.records[key] = bytes
 }
 
-func (m *mockStorage) Delete(_ context.Context, _ string) {
-	panic("not implemented")
+func (m *mockStorage) Delete(_ context.Context, key string) {
+	m.Lock()
+	defer m.Unlock()
+	m.deleteCount++
+	delete(m.records, key)
 }
 
 func (m *mockStorage) GetBatch(_ context.Context, _ []string) map[string][]byte {
 	m.Lock()
 	defer m.Unlock()
+	m.getCount++
 	return m.records
 }
 
 func (m *mockStorage) SetBatch(_ context.Context, records map[string][]byte) {
 	m.Lock()
 	defer m.Unlock()
+	m.setCount++
 
 	if m.records == nil {
 		m.records = records
@@ -43,6 +63,17 @@ func (m *mockStorage) SetBatch(_ context.Context, records map[string][]byte) {
 
 	for key, value := range records {
 		m.records[key] = value
+	}
+}
+
+func (m *mockStorage) assertRecord(t *testing.T, key string) {
+	t.Helper()
+
+	m.Lock()
+	defer m.Unlock()
+
+	if _, ok := m.records[key]; !ok {
+		t.Errorf("expected key %s to be in records", key)
 	}
 }
 
@@ -64,6 +95,33 @@ func (m *mockStorage) assertRecords(t *testing.T, ids []string, keyFn sturdyc.Ke
 	}
 }
 
+func (m *mockStorage) assertGetCount(t *testing.T, count int) {
+	t.Helper()
+	m.Lock()
+	defer m.Unlock()
+	if m.getCount != count {
+		t.Errorf("expected get count %d, got %d", count, m.getCount)
+	}
+}
+
+func (m *mockStorage) assertSetCount(t *testing.T, count int) {
+	t.Helper()
+	m.Lock()
+	defer m.Unlock()
+	if m.setCount != count {
+		t.Errorf("expected set count %d, got %d", count, m.setCount)
+	}
+}
+
+func (m *mockStorage) assertDeleteCount(t *testing.T, count int) {
+	t.Helper()
+	m.Lock()
+	defer m.Unlock()
+	if m.deleteCount != count {
+		t.Errorf("expected delete count %d, got %d", count, m.deleteCount)
+	}
+}
+
 // NOTE: I could delete this for now, but I'm going to need it later.
 func (m *mockStorage) DeleteBatch(_ context.Context, keys []string) error {
 	m.Lock()
@@ -75,6 +133,59 @@ func (m *mockStorage) DeleteBatch(_ context.Context, keys []string) error {
 }
 
 func TestDistributedStorage(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ttl := time.Minute
+	distributedStorage := &mockStorage{}
+	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithDistributedStorage(distributedStorage),
+	)
+	fetchObserver := NewFetchObserver(1)
+
+	key := "key1"
+	fetchObserver.Response(key)
+	_, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// TODO: We don't have to wait for the channel here, but let's keep it and
+	// remove it after we've written tests for the background refresh logic.
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	fetchObserver.Clear()
+
+	// The keys are written asynchonously, to the distributed storage.
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecord(t, key)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
+
+	// Next, we'll delete the records from the in-memory cache to simulate that they were evicted.
+	c.Delete(key)
+	if c.Size() != 0 {
+		t.Fatalf("expected cache size to be 0, got %d", c.Size())
+	}
+
+	// Now we can request the same key again. The underlying data source should not be called.
+	res, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if res != "valuekey1" {
+		t.Errorf("expected valuekey1, got %s", res)
+	}
+
+	// The keys are written asynchonously, to the distributed storage.
+	time.Sleep(100 * time.Millisecond)
+	fetchObserver.AssertFetchCount(t, 1)
+	distributedStorage.assertGetCount(t, 2)
+	distributedStorage.assertSetCount(t, 1)
+	distributedStorage.assertDeleteCount(t, 0)
+}
+
+func TestDistributedStorageBatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -103,6 +214,8 @@ func TestDistributedStorage(t *testing.T) {
 	// The keys are written asynchonously, to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, firstBatchOfIDs, keyFn)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
 
 	// Next, we'll delete the records from the in-memory cache to simulate that they were evicted.
 	for _, id := range firstBatchOfIDs {
@@ -136,4 +249,7 @@ func TestDistributedStorage(t *testing.T) {
 	// The keys are written asynchonously, to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, secondBatchOfIDs, keyFn)
+	distributedStorage.assertGetCount(t, 2)
+	distributedStorage.assertSetCount(t, 2)
+	distributedStorage.assertDeleteCount(t, 0)
 }
