@@ -9,17 +9,6 @@ import (
 	"github.com/cespare/xxhash"
 )
 
-type MetricsRecorder interface {
-	CacheHit()
-	CacheMiss()
-	Eviction()
-	ForcedEviction()
-	EntriesEvicted(int)
-	ShardIndex(int)
-	CacheBatchRefreshSize(size int)
-	ObserveCacheSize(callback func() int)
-}
-
 // FetchFn Fetch represents a function that can be used to fetch a single record from a data source.
 type FetchFn[T any] func(ctx context.Context) (T, error)
 

@@ -9,23 +9,6 @@ import (
 	"time"
 )
 
-type DistributedMetricsRecorder interface {
-	MetricsRecorder
-	DistributedCacheHit()
-	DistributedCacheMiss()
-}
-
-type DistributedStaleMetricsRecorder interface {
-	DistributedMetricsRecorder
-	DistributedStaleFallback()
-}
-
-type distributedMetricsRecorder struct {
-	DistributedMetricsRecorder
-}
-
-func (d *distributedMetricsRecorder) DistributedStaleFallback() {}
-
 type distributedRecord[V any] struct {
 	CreatedAt       time.Time `json:"created_at"`
 	Value           V         `json:"value"`
