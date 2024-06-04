@@ -47,8 +47,8 @@ func marshalRecord[V, T any](value V, c *Client[T]) ([]byte, error) {
 	return bytes, err
 }
 
-func (c *Client[T]) marshalMissingRecord() ([]byte, error) {
-	var missingRecord distributedRecord[T]
+func marshalMissingRecord[V, T any](c *Client[T]) ([]byte, error) {
+	var missingRecord distributedRecord[V]
 	missingRecord.CreatedAt = c.clock.Now()
 	missingRecord.IsMissingRecord = true
 	bytes, err := json.Marshal(missingRecord)
@@ -67,9 +67,9 @@ func unmarshalRecord[V any](bytes []byte, key string, log Logger) (distributedRe
 	return record, unmarshalErr
 }
 
-func (c *Client[T]) writeMissingRecord(key string) {
+func writeMissingRecord[V, T any](c *Client[T], key string) {
 	c.safeGo(func() {
-		if missingRecordBytes, missingRecordErr := c.marshalMissingRecord(); missingRecordErr == nil {
+		if missingRecordBytes, missingRecordErr := marshalMissingRecord[V](c); missingRecordErr == nil {
 			c.distributedStorage.Set(context.Background(), key, missingRecordBytes)
 		}
 	})
@@ -114,7 +114,7 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 
 		if errors.Is(fetchErr, ErrNotFound) {
 			if c.storeMissingRecords {
-				c.writeMissingRecord(key)
+				writeMissingRecord[V](c, key)
 				return response, fetchErr
 			}
 			if hasStale {
@@ -213,7 +213,7 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 
 			// At this point, we know that we weren't able to retrieve this ID from the underlying data source.
 			if c.storeMissingRecords {
-				if bytes, err := c.marshalMissingRecord(); err == nil {
+				if bytes, err := marshalMissingRecord[V](c); err == nil {
 					recordsToWrite[key] = bytes
 				}
 				continue
