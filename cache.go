@@ -108,9 +108,6 @@ func (c *Client[T]) startEvictions() {
 		ticker, stop := c.clock.NewTicker(c.evictionInterval)
 		defer stop()
 		for range ticker {
-			if c.metricsRecorder != nil {
-				c.metricsRecorder.Eviction()
-			}
 			c.shards[c.nextShard].evictExpired()
 			c.nextShard = (c.nextShard + 1) % len(c.shards)
 		}
@@ -121,22 +118,8 @@ func (c *Client[T]) startEvictions() {
 func (c *Client[T]) getShard(key string) *shard[T] {
 	hash := xxhash.Sum64String(key)
 	shardIndex := hash % uint64(len(c.shards))
-	if c.metricsRecorder != nil {
-		c.metricsRecorder.ShardIndex(int(shardIndex))
-	}
+	c.reportShardIndex(int(shardIndex))
 	return c.shards[shardIndex]
-}
-
-// reportCacheHits is used to report cache hits and misses to the metrics recorder.
-func (c *Client[T]) reportCacheHits(cacheHit bool) {
-	if c.metricsRecorder == nil {
-		return
-	}
-	if !cacheHit {
-		c.metricsRecorder.CacheMiss()
-		return
-	}
-	c.metricsRecorder.CacheHit()
 }
 
 func (c *Client[T]) get(key string) (value T, exists, ignore, refresh bool) {

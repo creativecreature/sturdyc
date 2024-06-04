@@ -84,10 +84,7 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 		var stale V
 		hasStale := false
 		if bytes, ok := c.distributedStorage.Get(ctx, key); ok {
-			if c.distributedMetricsRecorder != nil {
-				c.distributedMetricsRecorder.DistributedCacheHit()
-			}
-
+			c.reportDistributedCacheHit(true)
 			record, unmarshalErr := unmarshalRecord[V](bytes, key, c.log)
 			if unmarshalErr != nil {
 				return record.Value, unmarshalErr
@@ -103,8 +100,8 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 
 			stale = record.Value
 			hasStale = true
-		} else if c.distributedMetricsRecorder != nil {
-			c.distributedMetricsRecorder.DistributedCacheHit()
+		} else {
+			c.reportDistributedCacheHit(false)
 		}
 
 		// If it's not fresh enough, we'll retrieve it from the source.
@@ -132,9 +129,7 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 		}
 
 		if hasStale {
-			if c.distributedMetricsRecorder != nil {
-				c.distributedMetricsRecorder.DistributedStaleFallback()
-			}
+			c.reportDistributedStaleFallback()
 			return stale, nil
 		}
 
@@ -168,17 +163,12 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 			key := keyFn(id)
 			bytes, ok := distributedRecords[key]
 			if !ok {
-				if c.distributedMetricsRecorder != nil {
-					c.distributedMetricsRecorder.DistributedCacheMiss()
-				}
+				c.reportDistributedCacheHit(false)
 				idsToRefresh = append(idsToRefresh, id)
 				continue
 			}
 
-			if c.distributedMetricsRecorder != nil {
-				c.distributedMetricsRecorder.DistributedCacheHit()
-			}
-
+			c.reportDistributedCacheHit(true)
 			record, unmarshalErr := unmarshalRecord[V](bytes, key, c.log)
 			if unmarshalErr != nil {
 				idsToRefresh = append(idsToRefresh, id)
@@ -208,10 +198,8 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 		dataSourceResponses, err := fetchFn(ctx, idsToRefresh)
 		// Incase of an error, we'll proceed with the ones we got from the distributed storage.
 		if err != nil {
+			c.reportDistributedStaleFallback()
 			c.log.Error(fmt.Sprintf("sturdyc: error fetching records from the underlying data source. %v", err))
-			if c.distributedMetricsRecorder != nil {
-				c.distributedMetricsRecorder.DistributedStaleFallback()
-			}
 			maps.Copy(stale, fresh)
 			return stale, nil
 		}

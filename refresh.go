@@ -20,10 +20,7 @@ func (c *Client[T]) refresh(key string, fetchFn FetchFn[T]) {
 }
 
 func (c *Client[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) {
-	if c.metricsRecorder != nil {
-		c.metricsRecorder.CacheBatchRefreshSize(len(ids))
-	}
-
+	c.reportBatchRefreshSize(len(ids))
 	response, err := fetchFn(context.Background(), ids)
 	if err != nil {
 		return
