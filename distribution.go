@@ -38,8 +38,8 @@ func (d *distributedStorage) Delete(_ context.Context, _ string) {
 func (d *distributedStorage) DeleteBatch(_ context.Context, _ []string) {
 }
 
-func (c *Client[T]) marshalRecord(value T) ([]byte, error) {
-	record := distributedRecord[T]{CreatedAt: c.clock.Now(), Value: value, IsMissingRecord: false}
+func marshalRecord[V, T any](value V, c *Client[T]) ([]byte, error) {
+	record := distributedRecord[V]{CreatedAt: c.clock.Now(), Value: value, IsMissingRecord: false}
 	bytes, err := json.Marshal(record)
 	if err != nil {
 		c.log.Error(fmt.Sprintf("sturdyc: error marshalling record: %v", err))
@@ -58,11 +58,11 @@ func (c *Client[T]) marshalMissingRecord() ([]byte, error) {
 	return bytes, err
 }
 
-func (c *Client[T]) unmarshalRecord(bytes []byte, key string) (distributedRecord[T], error) {
-	var record distributedRecord[T]
+func unmarshalRecord[V any](bytes []byte, key string, log Logger) (distributedRecord[V], error) {
+	var record distributedRecord[V]
 	unmarshalErr := json.Unmarshal(bytes, &record)
 	if unmarshalErr != nil {
-		c.log.Error("sturdyc: error unmarshalling key: " + key)
+		log.Error("sturdyc: error unmarshalling key: " + key)
 	}
 	return record, unmarshalErr
 }
@@ -75,16 +75,16 @@ func (c *Client[T]) writeMissingRecord(key string) {
 	})
 }
 
-func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] {
+func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) FetchFn[V] {
 	if c.distributedStorage == nil {
 		return fetchFn
 	}
 
-	return func(ctx context.Context) (T, error) {
-		var stale T
+	return func(ctx context.Context) (V, error) {
+		var stale V
 		hasStale := false
 		if bytes, ok := c.distributedStorage.Get(ctx, key); ok {
-			record, unmarshalErr := c.unmarshalRecord(bytes, key)
+			record, unmarshalErr := unmarshalRecord[V](bytes, key, c.log)
 			if unmarshalErr != nil {
 				return record.Value, unmarshalErr
 			}
@@ -105,7 +105,7 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 		response, fetchErr := fetchFn(ctx)
 		if fetchErr == nil {
 			c.safeGo(func() {
-				if recordBytes, marshalErr := c.marshalRecord(response); marshalErr == nil {
+				if recordBytes, marshalErr := marshalRecord(response, c); marshalErr == nil {
 					c.distributedStorage.Set(context.Background(), key, recordBytes)
 				}
 			})
@@ -133,12 +133,12 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 	}
 }
 
-func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) BatchFetchFn[T] {
+func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFetchFn[V]) BatchFetchFn[V] {
 	if c.distributedStorage == nil {
 		return fetchFn
 	}
 
-	return func(ctx context.Context, ids []string) (map[string]T, error) {
+	return func(ctx context.Context, ids []string) (map[string]V, error) {
 		// We need to be able to lookup the ID of the record based on the key.
 		keyIDMap := make(map[string]string, len(ids))
 		keys := make([]string, 0, len(ids))
@@ -150,8 +150,8 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 
 		distributedRecords := c.distributedStorage.GetBatch(ctx, keys)
 		// Group the records we got from the distributed storage into fresh/stale maps.
-		fresh := make(map[string]T, len(ids))
-		stale := make(map[string]T, len(ids))
+		fresh := make(map[string]V, len(ids))
+		stale := make(map[string]V, len(ids))
 
 		// The IDs that we need to get from the underlying data source are the ones that are stale or missing.
 		idsToRefresh := make([]string, 0, len(ids))
@@ -163,7 +163,7 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 				continue
 			}
 
-			record, unmarshalErr := c.unmarshalRecord(bytes, key)
+			record, unmarshalErr := unmarshalRecord[V](bytes, key, c.log)
 			if unmarshalErr != nil {
 				idsToRefresh = append(idsToRefresh, id)
 				continue
@@ -205,7 +205,7 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 			response, ok := dataSourceResponses[id]
 
 			if ok {
-				if recordBytes, marshalErr := c.marshalRecord(response); marshalErr == nil {
+				if recordBytes, marshalErr := marshalRecord(response, c); marshalErr == nil {
 					recordsToWrite[key] = recordBytes
 				}
 				continue
