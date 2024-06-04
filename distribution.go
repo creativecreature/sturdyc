@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-type distributedRecord[T any] struct {
+type distributedRecord[V any] struct {
 	CreatedAt       time.Time `json:"created_at"`
-	Value           T         `json:"value"`
+	Value           V         `json:"value"`
 	IsMissingRecord bool      `json:"is_missing_record"`
 }
 
@@ -105,7 +105,7 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 		response, fetchErr := fetchFn(ctx)
 		if fetchErr == nil {
 			c.safeGo(func() {
-				if recordBytes, marshalErr := marshalRecord(response, c); marshalErr == nil {
+				if recordBytes, marshalErr := marshalRecord[V](response, c); marshalErr == nil {
 					c.distributedStorage.Set(context.Background(), key, recordBytes)
 				}
 			})
@@ -205,7 +205,7 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 			response, ok := dataSourceResponses[id]
 
 			if ok {
-				if recordBytes, marshalErr := marshalRecord(response, c); marshalErr == nil {
+				if recordBytes, marshalErr := marshalRecord[V](response, c); marshalErr == nil {
 					recordsToWrite[key] = recordBytes
 				}
 				continue
