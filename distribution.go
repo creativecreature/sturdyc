@@ -9,6 +9,23 @@ import (
 	"time"
 )
 
+type DistributedMetricsRecorder interface {
+	MetricsRecorder
+	DistributedCacheHit()
+	DistributedCacheMiss()
+}
+
+type DistributedStaleMetricsRecorder interface {
+	DistributedMetricsRecorder
+	DistributedStaleFallback()
+}
+
+type distributedMetricsRecorder struct {
+	DistributedMetricsRecorder
+}
+
+func (d *distributedMetricsRecorder) DistributedStaleFallback() {}
+
 type distributedRecord[V any] struct {
 	CreatedAt       time.Time `json:"created_at"`
 	Value           V         `json:"value"`
@@ -84,6 +101,10 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 		var stale V
 		hasStale := false
 		if bytes, ok := c.distributedStorage.Get(ctx, key); ok {
+			if c.distributedMetricsRecorder != nil {
+				c.distributedMetricsRecorder.DistributedCacheHit()
+			}
+
 			record, unmarshalErr := unmarshalRecord[V](bytes, key, c.log)
 			if unmarshalErr != nil {
 				return record.Value, unmarshalErr
@@ -99,6 +120,8 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 
 			stale = record.Value
 			hasStale = true
+		} else if c.distributedMetricsRecorder != nil {
+			c.distributedMetricsRecorder.DistributedCacheHit()
 		}
 
 		// If it's not fresh enough, we'll retrieve it from the source.
@@ -126,6 +149,9 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 		}
 
 		if hasStale {
+			if c.distributedMetricsRecorder != nil {
+				c.distributedMetricsRecorder.DistributedStaleFallback()
+			}
 			return stale, nil
 		}
 
@@ -159,8 +185,15 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 			key := keyFn(id)
 			bytes, ok := distributedRecords[key]
 			if !ok {
+				if c.distributedMetricsRecorder != nil {
+					c.distributedMetricsRecorder.DistributedCacheMiss()
+				}
 				idsToRefresh = append(idsToRefresh, id)
 				continue
+			}
+
+			if c.distributedMetricsRecorder != nil {
+				c.distributedMetricsRecorder.DistributedCacheHit()
 			}
 
 			record, unmarshalErr := unmarshalRecord[V](bytes, key, c.log)
@@ -193,13 +226,16 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 		// Incase of an error, we'll proceed with the ones we got from the distributed storage.
 		if err != nil {
 			c.log.Error(fmt.Sprintf("sturdyc: error fetching records from the underlying data source. %v", err))
+			if c.distributedMetricsRecorder != nil {
+				c.distributedMetricsRecorder.DistributedStaleFallback()
+			}
 			maps.Copy(stale, fresh)
 			return stale, nil
 		}
 
 		// Next, we'll want to check if we should change any of the records to be missing or perform deletions.
 		recordsToWrite := make(map[string][]byte, len(dataSourceResponses))
-		keysToDelete := make([]string, 0, len(idsToRefresh)-len(dataSourceResponses))
+		keysToDelete := make([]string, 0, max(len(idsToRefresh)-len(dataSourceResponses), 0))
 		for _, id := range idsToRefresh {
 			key := keyFn(id)
 			response, ok := dataSourceResponses[id]

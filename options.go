@@ -81,11 +81,23 @@ func WithDistributedStorage(storage DistributedStorage) Option {
 	}
 }
 
+func WithDistributedMetrics(metricsRecorder DistributedMetricsRecorder) Option {
+	return func(c *Config) {
+		c.distributedMetricsRecorder = &distributedMetricsRecorder{metricsRecorder}
+	}
+}
+
 func WithDistributedStaleStorage(storage DistributedStaleStorage, staleAfter time.Duration) Option {
 	return func(c *Config) {
 		c.distributedStorage = storage
 		c.distributedStaleStorage = true
 		c.distributedStaleDuration = staleAfter
+	}
+}
+
+func WithDistributedStaleMetrics(metricsRecorder DistributedStaleMetricsRecorder) Option {
+	return func(c *Config) {
+		c.distributedMetricsRecorder = metricsRecorder
 	}
 }
 

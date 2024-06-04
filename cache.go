@@ -34,10 +34,11 @@ type KeyFn func(id string) string
 
 // Config represents the configuration that can be applied to the cache.
 type Config struct {
-	clock            Clock
-	evictionInterval time.Duration
-	metricsRecorder  MetricsRecorder
-	log              Logger
+	clock                      Clock
+	evictionInterval           time.Duration
+	metricsRecorder            MetricsRecorder
+	distributedMetricsRecorder DistributedStaleMetricsRecorder
+	log                        Logger
 
 	refreshInBackground bool
 	minRefreshTime      time.Duration
