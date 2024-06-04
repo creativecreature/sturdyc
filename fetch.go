@@ -62,12 +62,13 @@ func getFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn F
 // determines if the record needs refreshing and, if necessary, schedules this
 // task for background execution.
 func (c *Client[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
-	return getFetch(ctx, c, key, fetchFn)
+	return getFetch[T, T](ctx, c, key, fetchFn)
 }
 
 // GetFetch is a convenience function that performs type assertion on the result of client.GetFetch.
 func GetFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
-	return unwrap[V](c.GetFetch(ctx, key, wrap[T](fetchFn)))
+	res, err := getFetch[V, T](ctx, c, key, fetchFn)
+	return unwrap[V](res, err)
 }
 
 func getFetchBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]T, error) {
@@ -109,11 +110,11 @@ func getFetchBatch[V, T any](ctx context.Context, c *Client[T], ids []string, ke
 // GetFetch determines if any of the records needs refreshing and, if
 // necessary, schedules this to be performed in the background.
 func (c *Client[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) (map[string]T, error) {
-	return getFetchBatch(ctx, c, ids, keyFn, fetchFn)
+	return getFetchBatch[T, T](ctx, c, ids, keyFn, fetchFn)
 }
 
 // GetFetchBatch is a convenience function that performs type assertion on the result of client.GetFetchBatch.
 func GetFetchBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
-	res, err := getFetchBatch(ctx, c, ids, keyFn, fetchFn)
+	res, err := getFetchBatch[V, T](ctx, c, ids, keyFn, fetchFn)
 	return unwrapBatch[V](res, err)
 }
