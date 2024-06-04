@@ -90,7 +90,7 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 			}
 
 			// Check if the record is fresh enough to not need a refresh.
-			if !c.distributedStaleStorage || time.Since(record.CreatedAt) < c.distributedStaleDuration {
+			if !c.distributedStaleStorage || c.clock.Since(record.CreatedAt) < c.distributedStaleDuration {
 				if record.IsMissingRecord {
 					return record.Value, ErrNotFound
 				}
@@ -126,11 +126,6 @@ func (c *Client[T]) distributedFetch(key string, fetchFn FetchFn[T]) FetchFn[T] 
 		}
 
 		if hasStale {
-			c.safeGo(func() {
-				if recordBytes, marshalErr := c.marshalRecord(stale); marshalErr == nil {
-					c.distributedStorage.Set(context.Background(), key, recordBytes)
-				}
-			})
 			return stale, nil
 		}
 
@@ -175,7 +170,7 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 			}
 
 			// If distributedStaleStorage isn't enabled it means all records are fresh, otherwise checked the CreatedAt time.
-			if !c.distributedStaleStorage || time.Since(record.CreatedAt) < c.distributedStaleDuration {
+			if !c.distributedStaleStorage || c.clock.Since(record.CreatedAt) < c.distributedStaleDuration {
 				// We never wan't to return missing records.
 				if !record.IsMissingRecord {
 					fresh[id] = record.Value
@@ -198,18 +193,6 @@ func (c *Client[T]) distributedBatchFetch(keyFn KeyFn, fetchFn BatchFetchFn[T]) 
 		// Incase of an error, we'll proceed with the ones we got from the distributed storage.
 		if err != nil {
 			c.log.Error(fmt.Sprintf("sturdyc: error fetching records from the underlying data source. %v", err))
-			// Push the next refresh time in case of an error. This prevents unnecessary fetching from an unhealthy system.
-			if c.distributedStaleStorage {
-				recordsToWrite := make(map[string][]byte, len(stale))
-				for id, value := range stale {
-					if recordBytes, marshalErr := c.marshalRecord(value); marshalErr == nil {
-						recordsToWrite[keyFn(id)] = recordBytes
-					}
-				}
-				c.safeGo(func() {
-					c.distributedStorage.SetBatch(context.Background(), recordsToWrite)
-				})
-			}
 			maps.Copy(stale, fresh)
 			return stale, nil
 		}

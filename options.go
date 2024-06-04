@@ -81,7 +81,7 @@ func WithDistributedStorage(storage DistributedStorage) Option {
 	}
 }
 
-func WithDistributedStorageStaleFallback(storage DistributedStaleStorage, staleAfter time.Duration) Option {
+func WithDistributedStaleStorage(storage DistributedStaleStorage, staleAfter time.Duration) Option {
 	return func(c *Config) {
 		c.distributedStorage = storage
 		c.distributedStaleStorage = true

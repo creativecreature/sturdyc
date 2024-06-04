@@ -2,6 +2,7 @@ package sturdyc_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -122,14 +123,12 @@ func (m *mockStorage) assertDeleteCount(t *testing.T, count int) {
 	}
 }
 
-// NOTE: I could delete this for now, but I'm going to need it later.
-func (m *mockStorage) DeleteBatch(_ context.Context, keys []string) error {
+func (m *mockStorage) DeleteBatch(_ context.Context, keys []string) {
 	m.Lock()
 	defer m.Unlock()
 	for _, key := range keys {
 		delete(m.records, key)
 	}
-	return nil
 }
 
 func TestDistributedStorage(t *testing.T) {
@@ -182,6 +181,164 @@ func TestDistributedStorage(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 	distributedStorage.assertGetCount(t, 2)
 	distributedStorage.assertSetCount(t, 1)
+	distributedStorage.assertDeleteCount(t, 0)
+}
+
+func TestDistributedStaleStorage(t *testing.T) {
+	t.Parallel()
+
+	clock := sturdyc.NewTestClock(time.Now())
+	ctx := context.Background()
+	ttl := time.Minute
+	distributedStorage := &mockStorage{}
+	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithClock(clock),
+		sturdyc.WithDistributedStaleStorage(distributedStorage, time.Minute),
+	)
+	fetchObserver := NewFetchObserver(1)
+
+	key := "key1"
+	fetchObserver.Response(key)
+	_, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	fetchObserver.Clear()
+
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecord(t, key)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
+
+	// Next, we'll move the clock to make the record expire in the
+	// in-memory cache, and become stale in the distributed storage.
+	clock.Add(time.Minute * 2)
+
+	// Now we can request the same key again, but we'll make the fetchFn error.
+	fetchObserver.Err(errors.New("error"))
+	res, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if res != "valuekey1" {
+		t.Errorf("expected valuekey1, got %s", res)
+	}
+
+	// We'll want to assert that the fetch observer was called again.
+	time.Sleep(100 * time.Millisecond)
+	fetchObserver.AssertFetchCount(t, 2)
+	distributedStorage.assertGetCount(t, 2)
+	distributedStorage.assertSetCount(t, 1)
+	distributedStorage.assertDeleteCount(t, 0)
+}
+
+func TestDistributedStaleStorageDeletes(t *testing.T) {
+	t.Parallel()
+
+	clock := sturdyc.NewTestClock(time.Now())
+	ctx := context.Background()
+	ttl := time.Minute
+	distributedStorage := &mockStorage{}
+	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithClock(clock),
+		sturdyc.WithDistributedStaleStorage(distributedStorage, time.Minute),
+	)
+	fetchObserver := NewFetchObserver(1)
+
+	key := "key1"
+	fetchObserver.Response(key)
+	_, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	fetchObserver.Clear()
+
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecord(t, key)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
+
+	// Next, we'll move the clock to make the record expire in the
+	// in-memory cache, and become stale in the distributed storage.
+	clock.Add(time.Minute * 2)
+
+	// Now we can request the same key again, but we'll make the fetchFn return a
+	// ErrNotFound. This should signal to the cache that the record has been
+	// deleted at the underlying data source.
+	fetchObserver.Err(sturdyc.ErrNotFound)
+	res, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if !errors.Is(err, sturdyc.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	if res != "" {
+		t.Errorf("expected empty string (zero value), got %s", res)
+	}
+
+	// We'll want to assert that the fetch observer was called again.
+	time.Sleep(100 * time.Millisecond)
+	fetchObserver.AssertFetchCount(t, 2)
+	distributedStorage.assertGetCount(t, 2)
+	distributedStorage.assertSetCount(t, 1)
+	distributedStorage.assertDeleteCount(t, 1)
+}
+
+func TestDistributedStaleStorageConvertsToMissingRecord(t *testing.T) {
+	t.Parallel()
+
+	clock := sturdyc.NewTestClock(time.Now())
+	ctx := context.Background()
+	ttl := time.Minute
+	distributedStorage := &mockStorage{}
+	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithClock(clock),
+		sturdyc.WithDistributedStaleStorage(distributedStorage, time.Minute),
+		sturdyc.WithMissingRecordStorage(),
+	)
+	fetchObserver := NewFetchObserver(1)
+
+	key := "key1"
+	fetchObserver.Response(key)
+	_, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	fetchObserver.Clear()
+
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecord(t, key)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
+
+	// Next, we'll move the clock to make the record expire in the
+	// in-memory cache, and become stale in the distributed storage.
+	clock.Add(time.Minute * 2)
+
+	// Now we can request the same key again, but we'll make the fetchFn return a
+	// ErrNotFound. This should signal to the cache that the record has been
+	// deleted at the underlying data source.
+	fetchObserver.Err(sturdyc.ErrNotFound)
+	res, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if !errors.Is(err, sturdyc.ErrMissingRecord) {
+		t.Fatalf("expected ErrMissingRecord, got %v", err)
+	}
+	if res != "" {
+		t.Errorf("expected empty string (zero value), got %s", res)
+	}
+
+	// We'll want to assert that the fetch observer was called again.
+	time.Sleep(100 * time.Millisecond)
+	fetchObserver.AssertFetchCount(t, 2)
+	distributedStorage.assertGetCount(t, 2)
+	distributedStorage.assertSetCount(t, 2)
 	distributedStorage.assertDeleteCount(t, 0)
 }
 
