@@ -34,7 +34,7 @@ func (c *Client[T]) groupIDs(ids []string, keyFn KeyFn) (hits map[string]T, miss
 }
 
 func getFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (T, error) {
-	wrappedFetch := distributedFetch(c, key, wrap[T](fetchFn))
+	wrappedFetch := wrap[T](distributedFetch(c, key, fetchFn))
 
 	// Begin by checking if we have the item in our cache.
 	value, ok, shouldIgnore, shouldRefresh := c.get(key)
@@ -71,7 +71,7 @@ func GetFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn F
 }
 
 func getFetchBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]T, error) {
-	wrappedFetch := distributedBatchFetch(c, keyFn, wrapBatch[T](fetchFn))
+	wrappedFetch := wrapBatch[T](distributedBatchFetch[V, T](c, keyFn, fetchFn))
 	cachedRecords, cacheMisses, idsToRefresh := c.groupIDs(ids, keyFn)
 
 	// If any records need to be refreshed, we'll do so in the background.
