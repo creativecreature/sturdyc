@@ -11,11 +11,11 @@ import (
 )
 
 type mockStorage struct {
+	sync.Mutex
 	getCount    int
 	setCount    int
 	deleteCount int
-	sync.Mutex
-	records map[string][]byte
+	records     map[string][]byte
 }
 
 func (m *mockStorage) Get(_ context.Context, key string) ([]byte, bool) {
@@ -64,6 +64,15 @@ func (m *mockStorage) SetBatch(_ context.Context, records map[string][]byte) {
 
 	for key, value := range records {
 		m.records[key] = value
+	}
+}
+
+func (m *mockStorage) DeleteBatch(_ context.Context, keys []string) {
+	m.Lock()
+	defer m.Unlock()
+	for _, key := range keys {
+		m.deleteCount++
+		delete(m.records, key)
 	}
 }
 
@@ -120,14 +129,6 @@ func (m *mockStorage) assertDeleteCount(t *testing.T, count int) {
 	defer m.Unlock()
 	if m.deleteCount != count {
 		t.Errorf("expected delete count %d, got %d", count, m.deleteCount)
-	}
-}
-
-func (m *mockStorage) DeleteBatch(_ context.Context, keys []string) {
-	m.Lock()
-	defer m.Unlock()
-	for _, key := range keys {
-		delete(m.records, key)
 	}
 }
 
@@ -333,10 +334,50 @@ func TestDistributedStaleStorageConvertsToMissingRecord(t *testing.T) {
 	}
 
 	// We'll want to assert that the fetch observer was called again.
+	<-fetchObserver.FetchCompleted
 	time.Sleep(100 * time.Millisecond)
 	fetchObserver.AssertFetchCount(t, 2)
 	distributedStorage.assertGetCount(t, 2)
 	distributedStorage.assertSetCount(t, 2)
+	distributedStorage.assertDeleteCount(t, 0)
+
+	// Lastly, we'll want to ensure that the record can be brought back into
+	// existence if the fetchFn returns it from a refresh.
+	fetchObserver.Clear()
+	fetchObserver.Response(key)
+	c.Delete(key)
+	clock.Add(time.Minute * 2)
+
+	res, err = sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if res != "valuekey1" {
+		t.Errorf("expected valuekey1, got %s", res)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 3)
+	distributedStorage.assertGetCount(t, 3)
+	distributedStorage.assertSetCount(t, 3)
+	distributedStorage.assertDeleteCount(t, 0)
+
+	// And now we'll get it from the distributed storage without
+	// a fetch to ensure that the conversion propagated.
+	c.Delete(key)
+	res, err = sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if res != "valuekey1" {
+		t.Errorf("expected valuekey1, got %s", res)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	fetchObserver.AssertFetchCount(t, 3)
+	distributedStorage.assertGetCount(t, 4)
+	distributedStorage.assertSetCount(t, 3)
 	distributedStorage.assertDeleteCount(t, 0)
 }
 
@@ -468,4 +509,182 @@ func TestDistributedStaleStorageBatch(t *testing.T) {
 	distributedStorage.assertGetCount(t, 2)
 	distributedStorage.assertSetCount(t, 1)
 	distributedStorage.assertDeleteCount(t, 0)
+}
+
+func TestDistributedStorageBatchDeletes(t *testing.T) {
+	t.Parallel()
+
+	staleDuration := time.Minute
+	clock := sturdyc.NewTestClock(time.Now())
+	ctx := context.Background()
+	ttl := time.Minute
+	distributedStorage := &mockStorage{}
+	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithClock(clock),
+		sturdyc.WithDistributedStaleStorage(distributedStorage, staleDuration),
+	)
+	fetchObserver := NewFetchObserver(1)
+
+	keyFn := c.BatchKeyFn("item")
+	batchOfIDs := []string{"1", "2", "3"}
+	fetchObserver.BatchResponse(batchOfIDs)
+	_, err := sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertRequestedRecords(t, batchOfIDs)
+	fetchObserver.AssertFetchCount(t, 1)
+	fetchObserver.Clear()
+
+	// The keys are written asynchonously, to the distributed storage.
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
+
+	// Next, we'll delete the records from the in-memory cache to simulate that they were evicted.
+	for _, id := range batchOfIDs {
+		c.Delete(keyFn(id))
+	}
+	if c.Size() != 0 {
+		t.Fatalf("expected cache size to be 0, got %d", c.Size())
+	}
+
+	// Now we'll want to go past the stale time, and setup the fetch observer so
+	// that it only returns the first two IDs. This will simulate that the last
+	// ID has been deleted at the underlying data source.
+	clock.Add(staleDuration + 1)
+	fetchObserver.BatchResponse([]string{"1", "2"})
+	res, err := sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(res) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(res))
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertRequestedRecords(t, batchOfIDs)
+	fetchObserver.AssertFetchCount(t, 2)
+
+	// The keys are written asynchonously, to the distributed storage.
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecords(t, []string{"1", "2"}, keyFn)
+	distributedStorage.assertGetCount(t, 2)
+	distributedStorage.assertSetCount(t, 2)
+	distributedStorage.assertDeleteCount(t, 1)
+}
+
+func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
+	t.Parallel()
+
+	staleDuration := time.Minute
+	clock := sturdyc.NewTestClock(time.Now())
+	ctx := context.Background()
+	ttl := time.Minute
+	distributedStorage := &mockStorage{}
+	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithClock(clock),
+		sturdyc.WithMissingRecordStorage(),
+		sturdyc.WithDistributedStaleStorage(distributedStorage, staleDuration),
+	)
+	fetchObserver := NewFetchObserver(1)
+
+	keyFn := c.BatchKeyFn("item")
+	batchOfIDs := []string{"1", "2", "3"}
+	fetchObserver.BatchResponse(batchOfIDs)
+	_, err := sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertRequestedRecords(t, batchOfIDs)
+	fetchObserver.AssertFetchCount(t, 1)
+	fetchObserver.Clear()
+
+	// The keys are written asynchonously, to the distributed storage.
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
+
+	// Next, we'll delete the records from the in-memory cache to simulate that they were evicted.
+	for _, id := range batchOfIDs {
+		c.Delete(keyFn(id))
+	}
+	if c.Size() != 0 {
+		t.Fatalf("expected cache size to be 0, got %d", c.Size())
+	}
+
+	// Now we'll want to go past the stale time, and setup the fetch observer so
+	// that it only returns the first two IDs. This will simulate that the last
+	// ID has been deleted at the underlying data source.
+	clock.Add(staleDuration + 1)
+	fetchObserver.BatchResponse([]string{"1", "2"})
+	res, err := sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(res) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(res))
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertRequestedRecords(t, batchOfIDs)
+	fetchObserver.AssertFetchCount(t, 2)
+	fetchObserver.Clear()
+
+	// The keys are written asynchonously, to the distributed storage.
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecords(t, []string{"1", "2"}, keyFn)
+	distributedStorage.assertGetCount(t, 2)
+	distributedStorage.assertSetCount(t, 2)
+	distributedStorage.assertDeleteCount(t, 0)
+
+	// Next, we'll want to assert that the records can be restored from missing to existing.
+	for _, id := range batchOfIDs {
+		c.Delete(keyFn(id))
+	}
+
+	clock.Add(staleDuration + 1)
+	fetchObserver.BatchResponse(batchOfIDs)
+
+	res, err = sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(res) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(res))
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertRequestedRecords(t, batchOfIDs)
+	fetchObserver.AssertFetchCount(t, 3)
+
+	// The keys are written asynchonously, to the distributed storage.
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
+	distributedStorage.assertGetCount(t, 3)
+	distributedStorage.assertSetCount(t, 3)
+	distributedStorage.assertDeleteCount(t, 0)
+
+	// Make sure we get it from the distributed cache.
+	for _, id := range batchOfIDs {
+		c.Delete(keyFn(id))
+	}
+	res, err = sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(res) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(res))
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	fetchObserver.AssertFetchCount(t, 3)
 }
