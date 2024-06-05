@@ -81,9 +81,9 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 	}
 
 	return func(ctx context.Context) (V, error) {
-		var stale V
-		hasStale := false
-		if bytes, ok := c.distributedStorage.Get(ctx, key); ok {
+		stale, hasStale := *new(V), false
+		bytes, ok := c.distributedStorage.Get(ctx, key)
+		if ok {
 			c.reportDistributedCacheHit(true)
 			record, unmarshalErr := unmarshalRecord[V](bytes, key, c.log)
 			if unmarshalErr != nil {
@@ -97,10 +97,10 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 				}
 				return record.Value, nil
 			}
+			stale, hasStale = record.Value, true
+		}
 
-			stale = record.Value
-			hasStale = true
-		} else {
+		if !ok {
 			c.reportDistributedCacheHit(false)
 		}
 
