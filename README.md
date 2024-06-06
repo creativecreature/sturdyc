@@ -64,7 +64,7 @@ what the examples are going to cover:
 - [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
 - [**refresh coalescing**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-coalescing)
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
-- [**distributed caching**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#distributed-caching)
+- [**distributed storage**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#distributed-storage)
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
 - [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
 
@@ -74,25 +74,9 @@ what the examples are going to cover:
 go get github.com/creativecreature/sturdyc
 ```
 
-# At a glance
+# Getting started
 
-The package exports the following functions:
-
-- Use [`Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Get) to get a record from the cache.
-- Use [`GetOrFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetOrFetch) to have the cache fetch and store a record.
-- Use [`GetOrFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetOrFetchBatch) to have the cache fetch and store a batch of records.
-- Use [`Set`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Set) to write a record to the cache.
-- Use [`SetMany`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.SetMany) to write multiple records to the cache.
-- Use [`Delete`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Delete) to delete a record from the cache.
-- Use [`Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Passthrough) to have the cache fetch and store a record.
-- Use [`PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PassthroughBatch) to have the cache fetch and store a batch of records.
-- Use [`Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Size) to get the number of items in the cache.
-- Use [`Size`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Size) to get the number of items in the cache.
-- Use [`PermutatedKey`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PermutatedKey) to create a permutated cache key.
-- Use [`PermutatedBatchKeyFn`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.PermutatedBatchKey) to create a permutated cache key for every record in a batch.
-- Use [`BatchKeyFn`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.BatchKeyFn) to create a cache key for every record in a batch.
-
-To get started, you will first have to set up a cache client to hold your
+The first thing you will have to do is to create a cache client to hold your
 configuration:
 
 ```go
@@ -983,7 +967,82 @@ source and only use the in-memory cache as a fallback. In such scenarios, you
 can use the `Passthrough` and `PassthroughBatch` functions. The cache will
 still perform in-flight request tracking and deduplicate your requests.
 
-# Distributed caching
+# Distributed storage
+I think it's important to read the previous sections before jumping here in
+order to understand all the heavy lifting `sturdyc` does when it comes to
+creating cache keys, tracking in-flight requests, refreshing records in the
+background to improve latency, and buffering/coalescing to reduce the number of
+round trips your application has to make to the underlying data sources.
+
+We will still take great advantage of all of these features when we add a
+distributed storage, and the efficiency gains will hopefully allow us to use a
+much cheaper cluster.
+
+From the cache point of view, the `WithDistributedStorage` option essentially
+just adds another data source with higher priority. Slightly simplified, we can
+think of it like this:
+
+```go
+func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
+	cacheKey := "order-status-" + id
+	fetchFn := func(ctx context.Context) (string, error) {
+		// Check redis cache first.
+		if orderStatus, ok := o.redisClient.Get(cacheKey); ok {
+			return orderStatus, nil
+		}
+
+		// Fetch the order status from the underlying data source.
+		var response OrderStatusResponse
+		err := requests.URL(o.baseURL).
+			Param("id", id).
+			ToJSON(&response).
+			Fetch(ctx)
+		if err != nil {
+			return "", err
+		}
+
+		// Add the order status to the redis cache.
+		go func() { o.RedisClient.Set(cacheKey, response.OrderStatus, time.Hour) }()
+
+		return response.OrderStatus, nil
+	}
+
+	return o.GetOrFetch(ctx, id, fetchFn)
+}
+```
+
+
+Having a distributed storage like this can be really beneficial when you have
+to deploy new containers, where the in-memory cache is going to be empty, as it
+avoids a sudden burst of traffic to the underlying data source.
+
+This package has been designed to work with any key-value store, all you have
+to do is implement this interface:
+
+```go
+type DistributedStorage interface {
+	Get(ctx context.Context, key string) ([]byte, bool)
+	Set(ctx context.Context, key string, value []byte)
+	GetBatch(ctx context.Context, keys []string) map[string][]byte
+	SetBatch(ctx context.Context, records map[string][]byte)
+}
+```
+
+and then pass it to the `WithDistributedStorage` option when you create your
+cache client.
+
+**Please note** that you are responsible for configuring the TTL and eviction
+policies of this storage. `sturdyc` will only make sure that it's being kept
+up-to-date with the in-memory cache.
+
+# Distributed storage early refreshes
+
+
+
+
+
+
+
 
 I've thought about adding this functionality internally because it would be
 really fun to build. However, there are already a lot of other projects that
