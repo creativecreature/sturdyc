@@ -26,7 +26,7 @@ type Config struct {
 	clock                      Clock
 	evictionInterval           time.Duration
 	metricsRecorder            MetricsRecorder
-	distributedMetricsRecorder DistributedStaleMetricsRecorder
+	distributedMetricsRecorder DistributedEarlyRefreshMetrics
 	log                        Logger
 
 	refreshInBackground bool
@@ -45,9 +45,9 @@ type Config struct {
 	keyTruncation            time.Duration
 	getSize                  func() int
 
-	distributedStorage       DistributedStaleStorage
-	distributedStaleStorage  bool
-	distributedStaleDuration time.Duration
+	distributedStorage              DistributedStorageEarlyRefreshes
+	distributedEarlyRefreshes       bool
+	distributedRefreshAfterDuration time.Duration
 }
 
 // Client represents a cache client that can be used to store and retrieve values.

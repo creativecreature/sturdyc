@@ -22,7 +22,7 @@ type DistributedStorage interface {
 	SetBatch(ctx context.Context, records map[string][]byte)
 }
 
-type DistributedStaleStorage interface {
+type DistributedStorageEarlyRefreshes interface {
 	DistributedStorage
 	Delete(ctx context.Context, key string)
 	DeleteBatch(ctx context.Context, keys []string)
@@ -91,7 +91,7 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 			}
 
 			// Check if the record is fresh enough to not need a refresh.
-			if !c.distributedStaleStorage || c.clock.Since(record.CreatedAt) < c.distributedStaleDuration {
+			if !c.distributedEarlyRefreshes || c.clock.Since(record.CreatedAt) < c.distributedRefreshAfterDuration {
 				if record.IsMissingRecord {
 					return record.Value, ErrNotFound
 				}
@@ -176,7 +176,7 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 			}
 
 			// If distributedStaleStorage isn't enabled it means all records are fresh, otherwise checked the CreatedAt time.
-			if !c.distributedStaleStorage || c.clock.Since(record.CreatedAt) < c.distributedStaleDuration {
+			if !c.distributedEarlyRefreshes || c.clock.Since(record.CreatedAt) < c.distributedRefreshAfterDuration {
 				// We never wan't to return missing records.
 				if !record.IsMissingRecord {
 					fresh[id] = record.Value

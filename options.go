@@ -19,14 +19,20 @@ func WithClock(clock Clock) Option {
 	}
 }
 
-// WithEvictionInterval sets the interval at which the cache scans a shard to evict expired entries.
+// WithEvictionInterval sets the interval at which the cache scans a shard to
+// evict expired entries. Setting this to a higher value will increase cache
+// performance and is advised if you don't think you'll exceed the capacity.
+// If the capacity is reached, the cache will still trigger an eviction.
 func WithEvictionInterval(interval time.Duration) Option {
 	return func(c *Config) {
 		c.evictionInterval = interval
 	}
 }
 
-// WithMissingRecordStorage allows the cache to mark keys as missing from the underlying data source.
+// WithMissingRecordStorage allows the cache to mark keys as missing from the
+// underlying data source. This allows you to stop streams of outgoing requests
+// for requests that don't exist. The keys will still have the same TTL and
+// refresh durations as any of the other record in the cache.
 func WithMissingRecordStorage() Option {
 	return func(c *Config) {
 		c.storeMissingRecords = true
@@ -82,28 +88,54 @@ func WithLog(log Logger) Option {
 	}
 }
 
+// WithDistributedStorage allows you to use the cache with a distributed
+// key-value store. The "GetOrFetch" and "GetOrFetchBatch" functions will check
+// this store first and only proceed to the underlying data source if the key
+// is missing. When a record is retrieved from the underlying data source, it
+// is written both to memory and to the distributed storage. You are
+// responsible for setting TTL and eviction policies for the distributed
+// storage. Sturdyc will only read and write records.
 func WithDistributedStorage(storage DistributedStorage) Option {
 	return func(c *Config) {
 		c.distributedStorage = &distributedStorage{storage}
-		c.distributedStaleStorage = false
+		c.distributedEarlyRefreshes = false
 	}
 }
 
-func WithDistributedMetrics(metricsRecorder DistributedMetricsRecorder) Option {
+// WithDistributedMetrics instructs the cache to report additional metrics
+// regarding the operations it performs with the distributed storage.
+func WithDistributedMetrics(metricsRecorder DistributedMetrics) Option {
 	return func(c *Config) {
 		c.distributedMetricsRecorder = &distributedMetricsRecorder{metricsRecorder}
 	}
 }
 
-func WithDistributedStaleStorage(storage DistributedStaleStorage, staleAfter time.Duration) Option {
+// WithDistributedStorageEarlyRefreshes is the distributed equivalent of the
+// "WithEarlyRefreshes" option. It allows distributed records to be refreshed
+// before their TTL expires. If a refresh fails, the cache will fall back to
+// what was returned by the distributed storage. This ensures that data can be
+// served for the duration of the TTL even if an upstream system goes down. To
+// use this functionality, you need to implement an interface with two
+// additional methods for deleting records compared to the simpler
+// "WithDistributedStorage" option. This is because a distributed cache that is
+// used with this option might have low refresh durations but high TTLs. If a
+// record is deleted from the underlying data source, it needs to be propagated
+// to the distributed storage before the TTL expires. However, please note that
+// you are still responsible for managing the TTL and eviction policies for the
+// distributed storage. Sturdyc will only delete records that have been removed
+// at the underlying data source.
+func WithDistributedStorageEarlyRefreshes(storage DistributedStorageEarlyRefreshes, refreshAfter time.Duration) Option {
 	return func(c *Config) {
 		c.distributedStorage = storage
-		c.distributedStaleStorage = true
-		c.distributedStaleDuration = staleAfter
+		c.distributedEarlyRefreshes = true
+		c.distributedRefreshAfterDuration = refreshAfter
 	}
 }
 
-func WithDistributedStaleMetrics(metricsRecorder DistributedStaleMetricsRecorder) Option {
+// WithDistributedEarlyRefreshMetrics instructs the cache to report additional
+// metrics for instances when a fetch fails and data from the distributed
+// storage is used despite the refreshAfter time having passed.
+func WithDistributedEarlyRefreshMetrics(metricsRecorder DistributedEarlyRefreshMetrics) Option {
 	return func(c *Config) {
 		c.distributedMetricsRecorder = metricsRecorder
 	}

@@ -192,7 +192,7 @@ func TestDistributedStaleStorage(t *testing.T) {
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
 		sturdyc.WithClock(clock),
-		sturdyc.WithDistributedStaleStorage(distributedStorage, time.Minute),
+		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, time.Minute),
 	)
 	fetchObserver := NewFetchObserver(1)
 
@@ -243,7 +243,7 @@ func TestDistributedStaleStorageDeletes(t *testing.T) {
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
 		sturdyc.WithClock(clock),
-		sturdyc.WithDistributedStaleStorage(distributedStorage, time.Minute),
+		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, time.Minute),
 	)
 	fetchObserver := NewFetchObserver(1)
 
@@ -296,7 +296,7 @@ func TestDistributedStaleStorageConvertsToMissingRecord(t *testing.T) {
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
 		sturdyc.WithClock(clock),
-		sturdyc.WithDistributedStaleStorage(distributedStorage, time.Minute),
+		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, time.Minute),
 		sturdyc.WithMissingRecordStorage(),
 	)
 	fetchObserver := NewFetchObserver(1)
@@ -456,7 +456,7 @@ func TestDistributedStaleStorageBatch(t *testing.T) {
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
 		sturdyc.WithClock(clock),
-		sturdyc.WithDistributedStaleStorage(distributedStorage, staleDuration),
+		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, staleDuration),
 	)
 	fetchObserver := NewFetchObserver(1)
 
@@ -521,7 +521,7 @@ func TestDistributedStorageBatchDeletes(t *testing.T) {
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
 		sturdyc.WithClock(clock),
-		sturdyc.WithDistributedStaleStorage(distributedStorage, staleDuration),
+		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, staleDuration),
 	)
 	fetchObserver := NewFetchObserver(1)
 
@@ -589,7 +589,7 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	c := sturdyc.New[string](1000, 10, ttl, 30,
 		sturdyc.WithClock(clock),
 		sturdyc.WithMissingRecordStorage(),
-		sturdyc.WithDistributedStaleStorage(distributedStorage, staleDuration),
+		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, staleDuration),
 	)
 	fetchObserver := NewFetchObserver(1)
 

@@ -10,19 +10,19 @@ type MetricsRecorder interface {
 	ObserveCacheSize(callback func() int)
 }
 
-type DistributedMetricsRecorder interface {
+type DistributedMetrics interface {
 	MetricsRecorder
 	DistributedCacheHit()
 	DistributedCacheMiss()
 }
 
-type DistributedStaleMetricsRecorder interface {
-	DistributedMetricsRecorder
+type DistributedEarlyRefreshMetrics interface {
+	DistributedMetrics
 	DistributedStaleFallback()
 }
 
 type distributedMetricsRecorder struct {
-	DistributedMetricsRecorder
+	DistributedMetrics
 }
 
 func (d *distributedMetricsRecorder) DistributedStaleFallback() {}
