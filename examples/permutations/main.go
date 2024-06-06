@@ -39,7 +39,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 		}
 		return response, nil
 	}
-	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
+	return a.GetOrFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 
 func main() {

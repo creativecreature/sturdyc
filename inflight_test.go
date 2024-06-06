@@ -54,7 +54,7 @@ func TestBatchRequestsForMissingKeysGetDeduplicated(t *testing.T) {
 			keyPrefix := "foo" + strconv.Itoa(j)
 			keyFn := c.BatchKeyFn(keyPrefix)
 			batchFn := createBatchFn(keyPrefix, &calls, cond)
-			go c.GetFetchBatch(ctx, ids, keyFn, batchFn)
+			go c.GetOrFetchBatch(ctx, ids, keyFn, batchFn)
 		}
 	}
 
@@ -83,7 +83,7 @@ func TestBatchRequestsForMissingKeysGetDeduplicated(t *testing.T) {
 			}
 
 			go func() {
-				res, err := c.GetFetchBatch(ctx, ids, keyFn, batchFn)
+				res, err := c.GetOrFetchBatch(ctx, ids, keyFn, batchFn)
 				if err != nil {
 					t.Errorf("expected no error got %v", err)
 				}
@@ -141,7 +141,7 @@ func TestInflightKeysAreRemovedForBatchRequestsThatPanic(t *testing.T) {
 	}
 	ids := []string{"1", "2", "3", "4", "5"}
 
-	_, err := c.GetFetchBatch(ctx, ids, c.BatchKeyFn("foo"), batchFn)
+	_, err := c.GetOrFetchBatch(ctx, ids, c.BatchKeyFn("foo"), batchFn)
 	if err == nil {
 		t.Errorf("expected an error; got nil")
 	}
@@ -178,7 +178,7 @@ func TestRequestsForMissingKeysGetDeduplicated(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
-			v, err := c.GetFetch(ctx, "id-1", fn)
+			v, err := c.GetOrFetch(ctx, "id-1", fn)
 			if err != nil {
 				t.Error(err)
 			}
@@ -215,7 +215,7 @@ func TestInflightKeyIsRemovedIfTheRequestPanics(t *testing.T) {
 	fetchFn := func(_ context.Context) (string, error) {
 		panic("boom")
 	}
-	_, err := c.GetFetch(ctx, "key1", fetchFn)
+	_, err := c.GetOrFetch(ctx, "key1", fetchFn)
 	if err == nil {
 		t.Errorf("expected an error; got nil")
 	}

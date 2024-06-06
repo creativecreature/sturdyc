@@ -27,7 +27,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		}
 		return "", sturdyc.ErrNotFound
 	}
-	return a.GetFetch(ctx, key, fetchFn)
+	return a.GetOrFetch(ctx, key, fetchFn)
 }
 
 func main() {

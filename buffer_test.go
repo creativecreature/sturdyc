@@ -47,7 +47,7 @@ func TestBatchIsRefreshedWhenTheTimeoutExpires(t *testing.T) {
 
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.BatchResponse(ids)
-	sturdyc.GetFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
 
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
@@ -59,11 +59,11 @@ func TestBatchIsRefreshedWhenTheTimeoutExpires(t *testing.T) {
 	clock.Add(maxRefreshDelay + time.Second)
 
 	// We'll create a batch function that stores the ids it was called with, and
-	// then invoke "GetFetchBatch". We are going to request 3 ids, which is less
+	// then invoke "GetOrFetchBatch". We are going to request 3 ids, which is less
 	// than our wanted batch size. This should lead to a batch being scheduled.
 	recordsToRequest := []string{"1", "2", "3"}
 	fetchObserver.BatchResponse(recordsToRequest)
-	sturdyc.GetFetchBatch(ctx, client, recordsToRequest, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, recordsToRequest, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	time.Sleep(10 * time.Millisecond)
 	fetchObserver.AssertFetchCount(t, 1)
 
@@ -111,7 +111,7 @@ func TestBatchIsRefreshedWhenTheBufferSizeIsReached(t *testing.T) {
 
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.BatchResponse(ids)
-	sturdyc.GetFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
 
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
@@ -123,17 +123,17 @@ func TestBatchIsRefreshedWhenTheBufferSizeIsReached(t *testing.T) {
 	clock.Add(maxRefreshDelay + time.Second)
 
 	// We'll create a batch function that stores the ids it was called with, and
-	// then invoke "GetFetchBatch". We are going to request 3 ids, which is less
+	// then invoke "GetOrFetchBatch". We are going to request 3 ids, which is less
 	// than our ideal batch size. This should lead to a batch being scheduled.
 	firstBatchOfRequestedRecords := []string{"1", "2", "3"}
 	fetchObserver.BatchResponse([]string{"1", "2", "3"})
-	sturdyc.GetFetchBatch(ctx, client, firstBatchOfRequestedRecords, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, firstBatchOfRequestedRecords, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
 
 	// Now, we'll move the clock forward 5 seconds before requesting another 3 records.
 	// Our wanted batch size is 10, hence this should NOT be enough to trigger a refresh.
 	clock.Add(5 * time.Second)
 	secondBatchOfRecords := []string{"4", "5", "6"}
-	sturdyc.GetFetchBatch(ctx, client, secondBatchOfRecords, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, secondBatchOfRecords, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
 
 	// Move the clock another 10 seconds. Again, this should not trigger a refresh. We'll
 	// perform a sleep here too just to ensure that the buffer is not refreshed prematurely.
@@ -144,7 +144,7 @@ func TestBatchIsRefreshedWhenTheBufferSizeIsReached(t *testing.T) {
 	// In the the third batch I'm going to request 6 records. With that, we've
 	// requested 12 record in total, which is greater than our buffer size of 10.
 	thirdBatchOfRecords := []string{"7", "8", "9", "10", "11", "12"}
-	sturdyc.GetFetchBatch(ctx, client, thirdBatchOfRecords, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, thirdBatchOfRecords, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
 
 	// An actual refresh should happen for the first 10 ids, while the 2 that
 	// overflows should get scheduled for a refresh. Block until the request has
@@ -205,7 +205,7 @@ func TestBatchIsNotRefreshedByDuplicates(t *testing.T) {
 
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.BatchResponse(ids)
-	sturdyc.GetFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, ids, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
 	fetchObserver.AssertRequestedRecords(t, ids)
@@ -221,7 +221,7 @@ func TestBatchIsNotRefreshedByDuplicates(t *testing.T) {
 	for i := 0; i < numRequests; i++ {
 		go func(i int) {
 			id := []string{strconv.Itoa((i % 3) + 1)}
-			sturdyc.GetFetchBatch(ctx, client, id, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
+			sturdyc.GetOrFetchBatch(ctx, client, id, client.BatchKeyFn("item"), fetchObserver.FetchBatch)
 			wg.Done()
 		}(i)
 	}
@@ -283,9 +283,9 @@ func TestBatchesAreGroupedByPermutations(t *testing.T) {
 
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.BatchResponse(seedIDs)
-	sturdyc.GetFetchBatch(ctx, c, seedIDs, c.PermutatedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, seedIDs, c.PermutatedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
-	sturdyc.GetFetchBatch(ctx, c, seedIDs, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, seedIDs, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 2)
 	fetchObserver.Clear()
@@ -304,12 +304,12 @@ func TestBatchesAreGroupedByPermutations(t *testing.T) {
 	optsTwoBatch2 := []string{"6", "7", "8"}
 
 	// Request the first batch of records. This should wait for additional IDs.
-	sturdyc.GetFetchBatch(ctx, c, optsOneIDs, c.PermutatedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, optsOneIDs, c.PermutatedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
 
 	// Next, we're requesting ids 4-8 with the second options which should exceed the buffer size for that permutation.
 	fetchObserver.BatchResponse([]string{"4", "5", "6", "7", "8"})
-	sturdyc.GetFetchBatch(ctx, c, optsTwoBatch1, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
-	sturdyc.GetFetchBatch(ctx, c, optsTwoBatch2, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, optsTwoBatch1, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, optsTwoBatch2, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
 
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 3)
@@ -363,7 +363,7 @@ func TestLargeBatchesAreChunkedCorrectly(t *testing.T) {
 
 	fetchObserver := NewFetchObserver(5)
 	fetchObserver.BatchResponse(seedIDs)
-	sturdyc.GetFetchBatch(ctx, client, seedIDs, client.BatchKeyFn(cacheKeyPrefix), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, seedIDs, client.BatchKeyFn(cacheKeyPrefix), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
 	fetchObserver.AssertRequestedRecords(t, seedIDs)
@@ -379,7 +379,7 @@ func TestLargeBatchesAreChunkedCorrectly(t *testing.T) {
 	for i := 1; i <= 50; i++ {
 		largeBatch = append(largeBatch, strconv.Itoa(i))
 	}
-	sturdyc.GetFetchBatch(ctx, client, largeBatch, client.BatchKeyFn(cacheKeyPrefix), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, client, largeBatch, client.BatchKeyFn(cacheKeyPrefix), fetchObserver.FetchBatch)
 	for i := 0; i < 10; i++ {
 		<-fetchObserver.FetchCompleted
 	}
@@ -420,7 +420,7 @@ func TestValuesAreUpdatedCorrectly(t *testing.T) {
 	}
 
 	records := []string{"1", "2", "3"}
-	res, _ := sturdyc.GetFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
+	res, _ := sturdyc.GetOrFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
 		values := make(map[string]Foo, len(ids))
 		for _, id := range ids {
 			values[id] = Foo{Value: "foo-" + id}
@@ -433,7 +433,7 @@ func TestValuesAreUpdatedCorrectly(t *testing.T) {
 	}
 
 	clock.Add(time.Minute * 45)
-	sturdyc.GetFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
+	sturdyc.GetOrFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
 		values := make(map[string]Foo, len(ids))
 		for _, id := range ids {
 			values[id] = Foo{Value: "foo2-" + id}
@@ -450,7 +450,7 @@ func TestValuesAreUpdatedCorrectly(t *testing.T) {
 	clock.Add(time.Minute * 5)
 	time.Sleep(50 * time.Millisecond)
 
-	resTwo, _ := sturdyc.GetFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
+	resTwo, _ := sturdyc.GetOrFetchBatch[Foo](ctx, client, records, client.BatchKeyFn("item"), func(_ context.Context, ids []string) (map[string]Foo, error) {
 		values := make(map[string]Foo, len(ids))
 		for _, id := range ids {
 			values[id] = Foo{Value: "foo3-" + id}

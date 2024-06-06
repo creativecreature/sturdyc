@@ -24,7 +24,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		log.Printf("Fetching value for key: %s\n", key)
 		return "value", nil
 	}
-	return a.GetFetch(ctx, key, fetchFn)
+	return a.GetOrFetch(ctx, key, fetchFn)
 }
 
 func main() {

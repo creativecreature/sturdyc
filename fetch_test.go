@@ -10,7 +10,7 @@ import (
 	"github.com/creativecreature/sturdyc"
 )
 
-func TestGetFetch(t *testing.T) {
+func TestGetOrFetch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -25,7 +25,7 @@ func TestGetFetch(t *testing.T) {
 	fetchObserver.Response(id)
 
 	// The first time we call Get, it should call the fetchFn to retrieve the value.
-	firstValue, err := sturdyc.GetFetch(ctx, c, id, fetchObserver.Fetch)
+	firstValue, err := sturdyc.GetOrFetch(ctx, c, id, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -37,7 +37,7 @@ func TestGetFetch(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 
 	// The second time we call Get, we expect to have it served from the sturdyc.
-	secondValue, err := sturdyc.GetFetch(ctx, c, id, fetchObserver.Fetch)
+	secondValue, err := sturdyc.GetOrFetch(ctx, c, id, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -48,7 +48,7 @@ func TestGetFetch(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 }
 
-func TestGetFetchStampedeProtection(t *testing.T) {
+func TestGetOrFetchStampedeProtection(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -74,7 +74,7 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 
 	// We will start the test by trying to get key1, which wont exist in the sturdyc. Hence,
 	// the fetch function is going to get called and we'll set the initial value to val1.
-	sturdyc.GetFetch[string](ctx, c, id, fetchObserver.Fetch)
+	sturdyc.GetOrFetch[string](ctx, c, id, fetchObserver.Fetch)
 
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
@@ -87,7 +87,7 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := sturdyc.GetFetch(ctx, c, id, fetchObserver.Fetch)
+			_, err := sturdyc.GetOrFetch(ctx, c, id, fetchObserver.Fetch)
 			if err != nil {
 				panic(err)
 			}
@@ -99,7 +99,7 @@ func TestGetFetchStampedeProtection(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 2)
 }
 
-func TestGetFetchRefreshRetries(t *testing.T) {
+func TestGetOrFetchRefreshRetries(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -122,7 +122,7 @@ func TestGetFetchRefreshRetries(t *testing.T) {
 	fetchObserver := NewFetchObserver(6)
 	fetchObserver.Response(id)
 
-	_, err := sturdyc.GetFetch(ctx, c, id, fetchObserver.Fetch)
+	_, err := sturdyc.GetOrFetch(ctx, c, id, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -132,10 +132,10 @@ func TestGetFetchRefreshRetries(t *testing.T) {
 	fetchObserver.Clear()
 
 	// Now, we'll move the clock passed the refresh delay which should make the
-	// next call to GetFetchBatch result in a call to refresh the record.
+	// next call to GetOrFetchBatch result in a call to refresh the record.
 	clock.Add(maxRefreshDelay + 1)
 	fetchObserver.Err(errors.New("error"))
-	_, err = sturdyc.GetFetch(ctx, c, id, fetchObserver.Fetch)
+	_, err = sturdyc.GetOrFetch(ctx, c, id, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -145,7 +145,7 @@ func TestGetFetchRefreshRetries(t *testing.T) {
 	// go through.
 	for i := 0; i < 100; i++ {
 		clock.Add(retryInterval)
-		sturdyc.GetFetch(ctx, c, id, fetchObserver.Fetch)
+		sturdyc.GetOrFetch(ctx, c, id, fetchObserver.Fetch)
 	}
 	for i := 0; i < 6; i++ {
 		<-fetchObserver.FetchCompleted
@@ -153,7 +153,7 @@ func TestGetFetchRefreshRetries(t *testing.T) {
 	fetchObserver.AssertMaxFetchCount(t, 8)
 }
 
-func TestGetFetchMissingRecord(t *testing.T) {
+func TestGetOrFetchMissingRecord(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -173,7 +173,7 @@ func TestGetFetchMissingRecord(t *testing.T) {
 
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.Err(sturdyc.ErrNotFound)
-	_, err := sturdyc.GetFetch(ctx, c, "1", fetchObserver.Fetch)
+	_, err := sturdyc.GetOrFetch(ctx, c, "1", fetchObserver.Fetch)
 	if !errors.Is(err, sturdyc.ErrMissingRecord) {
 		t.Fatalf("expected ErrMissingRecord, got %v", err)
 	}
@@ -184,7 +184,7 @@ func TestGetFetchMissingRecord(t *testing.T) {
 	// Make the request again. It should trigger the refresh of the missing record to happen in the background.
 	clock.Add(maxRefreshDelay * 1)
 	fetchObserver.Response("1")
-	_, err = sturdyc.GetFetch(ctx, c, "1", fetchObserver.Fetch)
+	_, err = sturdyc.GetOrFetch(ctx, c, "1", fetchObserver.Fetch)
 	if !errors.Is(err, sturdyc.ErrMissingRecord) {
 		t.Fatalf("expected ErrMissingRecordCooldown, got %v", err)
 	}
@@ -192,7 +192,7 @@ func TestGetFetchMissingRecord(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 2)
 
 	// The next time we call the cache, the record should be there.
-	val, err := sturdyc.GetFetch(ctx, c, "1", fetchObserver.Fetch)
+	val, err := sturdyc.GetOrFetch(ctx, c, "1", fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -202,7 +202,7 @@ func TestGetFetchMissingRecord(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 2)
 }
 
-func TestGetFetchBatch(t *testing.T) {
+func TestGetOrFetchBatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -211,7 +211,7 @@ func TestGetFetchBatch(t *testing.T) {
 
 	firstBatchOfIDs := []string{"1", "2", "3"}
 	fetchObserver.BatchResponse(firstBatchOfIDs)
-	_, err := sturdyc.GetFetchBatch(ctx, c, firstBatchOfIDs, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, err := sturdyc.GetOrFetchBatch(ctx, c, firstBatchOfIDs, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -225,7 +225,7 @@ func TestGetFetchBatch(t *testing.T) {
 	// request where we'll request item 1, 2, 3, and 4, we'll only expect that item 4 is fetched.
 	secondBatchOfIDs := []string{"1", "2", "3", "4"}
 	fetchObserver.BatchResponse([]string{"4"})
-	_, err = sturdyc.GetFetchBatch(ctx, c, secondBatchOfIDs, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, err = sturdyc.GetOrFetchBatch(ctx, c, secondBatchOfIDs, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -240,7 +240,7 @@ func TestGetFetchBatch(t *testing.T) {
 	// This should give us a ErrOnlyCachedRecords error, along with the records we could retrieve from the sturdyc.
 	thirdBatchOfIDs := []string{"2", "4", "6"}
 	fetchObserver.Err(errors.New("error"))
-	records, err := sturdyc.GetFetchBatch(ctx, c, thirdBatchOfIDs, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	records, err := sturdyc.GetOrFetchBatch(ctx, c, thirdBatchOfIDs, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertRequestedRecords(t, []string{"6"})
 	if !errors.Is(err, sturdyc.ErrOnlyCachedRecords) {
@@ -251,7 +251,7 @@ func TestGetFetchBatch(t *testing.T) {
 	}
 }
 
-func TestBatchGetFetchNilMapMissingRecords(t *testing.T) {
+func TestBatchGetOrFetchNilMapMissingRecords(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -271,7 +271,7 @@ func TestBatchGetFetchNilMapMissingRecords(t *testing.T) {
 
 	fetchObserver := NewFetchObserver(1)
 	ids := []string{"1", "2", "3", "4"}
-	records, err := sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	records, err := sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -286,7 +286,7 @@ func TestBatchGetFetchNilMapMissingRecords(t *testing.T) {
 	// store these ids as cache misses. Hence, performing the request again,
 	// should not result in another call before the refresh delay has passed.
 	clock.Add(minRefreshDelay - 1)
-	records, err = sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	records, err = sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -298,7 +298,7 @@ func TestBatchGetFetchNilMapMissingRecords(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 }
 
-func TestGetFetchBatchRetries(t *testing.T) {
+func TestGetOrFetchBatchRetries(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -321,7 +321,7 @@ func TestGetFetchBatchRetries(t *testing.T) {
 	fetchObserver.BatchResponse(ids)
 
 	// Assert that all records were requested, and that we retrieved each one of them.
-	_, err := sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, err := sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -332,10 +332,10 @@ func TestGetFetchBatchRetries(t *testing.T) {
 	fetchObserver.Clear()
 
 	// Now, we'll move the clock passed the refresh delay which should make the
-	// next call to GetFetchBatch result in a call to refresh the record.
+	// next call to GetOrFetchBatch result in a call to refresh the record.
 	clock.Add(maxRefreshDelay + 1)
 	fetchObserver.Err(errors.New("error"))
-	_, err = sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, err = sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -349,7 +349,7 @@ func TestGetFetchBatchRetries(t *testing.T) {
 	// go through.
 	for i := 0; i < 100; i++ {
 		clock.Add(retryInterval)
-		sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+		sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	}
 	for i := 0; i < 6; i++ {
 		<-fetchObserver.FetchCompleted
@@ -357,7 +357,7 @@ func TestGetFetchBatchRetries(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 8)
 }
 
-func TestBatchGetFetchOnlyCachedRecordsErr(t *testing.T) {
+func TestBatchGetOrFetchOnlyCachedRecordsErr(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -372,7 +372,7 @@ func TestBatchGetFetchOnlyCachedRecordsErr(t *testing.T) {
 	// We'll start by fetching a couple of ids without any errors to fill the sturdyc.
 	ids := []string{"1", "2", "3", "4"}
 	fetchObserver.BatchResponse(ids)
-	_, firstBatchErr := sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, firstBatchErr := sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if firstBatchErr != nil {
 		t.Errorf("expected no error, got %v", firstBatchErr)
 	}
@@ -388,7 +388,7 @@ func TestBatchGetFetchOnlyCachedRecordsErr(t *testing.T) {
 	// This allows the caller to decide if they want to proceed or not.
 	ids = append(ids, "5")
 	fetchObserver.Err(errors.New("error"))
-	records, secondBatchErr := sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	records, secondBatchErr := sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 
 	if !errors.Is(secondBatchErr, sturdyc.ErrOnlyCachedRecords) {
 		t.Errorf("expected ErrPartialBatchResponse, got %v", secondBatchErr)
@@ -403,7 +403,7 @@ func TestBatchGetFetchOnlyCachedRecordsErr(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 2)
 }
 
-func TestGetFetchBatchStampedeProtection(t *testing.T) {
+func TestGetOrFetchBatchStampedeProtection(t *testing.T) {
 	t.Parallel()
 
 	// We're going to fetch the same list of ids in 1000 goroutines.
@@ -428,7 +428,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	fetchObserver := NewFetchObserver(1000)
 	fetchObserver.BatchResponse(ids)
 
-	_, err := sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, err := sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -440,7 +440,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	// Set the clock to be just before the min cache refresh threshold.
 	// This should not be enough to make the cache call our fetchFn.
 	clock.Add(minRefreshDelay - 1)
-	_, err = sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	_, err = sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -450,7 +450,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	time.Sleep(time.Millisecond * 10)
 	fetchObserver.AssertFetchCount(t, 1)
 
-	// Now, let's go past the threshold. This should make the next GetFetchBatch
+	// Now, let's go past the threshold. This should make the next GetOrFetchBatch
 	// call schedule a refresh in the background, and with that we're going to
 	// test that the stampede protection works as intended. Invoking it from 1000
 	// goroutines at the same time should not make us schedule multiple refreshes.
@@ -460,7 +460,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
-			_, goroutineErr := sturdyc.GetFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+			_, goroutineErr := sturdyc.GetOrFetchBatch(ctx, c, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 			if goroutineErr != nil {
 				panic(goroutineErr)
 			}
@@ -468,9 +468,9 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Even though we called GetFetch 1000 times, it should only result in a
+	// Even though we called GetOrFetch 1000 times, it should only result in a
 	// maximum of 3 outgoing requests. Most likely, it should just be one
-	// additional request but without having a top level lock in GetFetchBatch we
+	// additional request but without having a top level lock in GetOrFetchBatch we
 	// can't guarantee that the first goroutine moves the refreshAt of all 3 ids.
 	// The first goroutine might get a lock for the first index, and then get paused.
 	// During that time a second goroutine could have refreshed id 2 and 3.
@@ -478,7 +478,7 @@ func TestGetFetchBatchStampedeProtection(t *testing.T) {
 	fetchObserver.AssertMaxFetchCount(t, 4)
 }
 
-func TestGetFetchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
+func TestGetOrFetchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -500,7 +500,7 @@ func TestGetFetchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.Response(id)
 
-	c.GetFetch(ctx, id, fetchObserver.Fetch)
+	c.GetOrFetch(ctx, id, fetchObserver.Fetch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
 	time.Sleep(time.Millisecond * 10)
@@ -514,7 +514,7 @@ func TestGetFetchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
 	fetchObserver.Clear()
 	fetchObserver.Err(sturdyc.ErrNotFound)
 	clock.Add(maxRefreshDelay + 1)
-	c.GetFetch(ctx, id, fetchObserver.Fetch)
+	c.GetOrFetch(ctx, id, fetchObserver.Fetch)
 	<-fetchObserver.FetchCompleted
 	time.Sleep(time.Millisecond * 10)
 
@@ -523,7 +523,7 @@ func TestGetFetchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
 	}
 }
 
-func TestGetFetchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
+func TestGetOrFetchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -546,7 +546,7 @@ func TestGetFetchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.Response(id)
 
-	c.GetFetch(ctx, id, fetchObserver.Fetch)
+	c.GetOrFetch(ctx, id, fetchObserver.Fetch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
 	time.Sleep(time.Millisecond * 10)
@@ -563,7 +563,7 @@ func TestGetFetchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	fetchObserver.Clear()
 	fetchObserver.Err(sturdyc.ErrNotFound)
 	clock.Add(maxRefreshDelay + 1)
-	c.GetFetch(ctx, id, fetchObserver.Fetch)
+	c.GetOrFetch(ctx, id, fetchObserver.Fetch)
 	<-fetchObserver.FetchCompleted
 	time.Sleep(time.Millisecond * 10)
 
@@ -575,7 +575,7 @@ func TestGetFetchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	}
 }
 
-func TestGetFetchBatchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
+func TestGetOrFetchBatchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -597,7 +597,7 @@ func TestGetFetchBatchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T)
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.BatchResponse(ids)
 
-	c.GetFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	c.GetOrFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
 	time.Sleep(time.Millisecond * 10)
@@ -610,7 +610,7 @@ func TestGetFetchBatchDeletesRecordsThatHaveBeenRemovedAtTheSource(t *testing.T)
 	// only return the first 3 records from the source.
 	fetchObserver.BatchResponse([]string{"1", "2", "3"})
 	clock.Add(maxRefreshDelay + 1)
-	c.GetFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	c.GetOrFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 2)
 	time.Sleep(time.Millisecond * 10)
@@ -644,7 +644,7 @@ func TestGetFetchBatchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.BatchResponse(ids)
 
-	c.GetFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	c.GetOrFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 1)
 	time.Sleep(time.Millisecond * 10)
@@ -661,7 +661,7 @@ func TestGetFetchBatchConvertsDeletedRecordsToMissingRecords(t *testing.T) {
 	// only return the first 2 records from the source.
 	fetchObserver.BatchResponse([]string{"1", "2"})
 	clock.Add(maxRefreshDelay + 1)
-	c.GetFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
+	c.GetOrFetchBatch(ctx, ids, c.BatchKeyFn("item"), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 2)
 	time.Sleep(time.Millisecond * 10)

@@ -148,7 +148,7 @@ func (c *Client[T]) GetMany(keys []string) map[string]T {
 	return records
 }
 
-// GetManyKeyFn follows the same API as GetFetchBatch and PassthroughBatch.
+// GetManyKeyFn follows the same API as GetOrFetchBatch and PassthroughBatch.
 // You provide it with a slice of IDs and a keyFn, which is applied to create
 // the cache key. The returned map uses the IDs as keys instead of the cache key.
 // If you've used ScanKeys to retrieve the actual keys, you can retrieve the records
@@ -188,7 +188,7 @@ func (c *Client[T]) SetMany(records map[string]T) bool {
 	return triggeredEviction
 }
 
-// SetManyKeyFn follows the same API as GetFetchBatch and PassThroughBatch. It
+// SetManyKeyFn follows the same API as GetOrFetchBatch and PassThroughBatch. It
 // takes a map of records where the keyFn is applied to each key in the map
 // before it's stored in the cache.
 func (c *Client[T]) SetManyKeyFn(records map[string]T, cacheKeyFn KeyFn) bool {

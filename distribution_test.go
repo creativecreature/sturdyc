@@ -145,7 +145,7 @@ func TestDistributedStorage(t *testing.T) {
 
 	key := "key1"
 	fetchObserver.Response(key)
-	_, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	_, err := sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -167,7 +167,7 @@ func TestDistributedStorage(t *testing.T) {
 	}
 
 	// Now we can request the same key again. The underlying data source should not be called.
-	res, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	res, err := sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -198,7 +198,7 @@ func TestDistributedStaleStorage(t *testing.T) {
 
 	key := "key1"
 	fetchObserver.Response(key)
-	_, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	_, err := sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -218,7 +218,7 @@ func TestDistributedStaleStorage(t *testing.T) {
 
 	// Now we can request the same key again, but we'll make the fetchFn error.
 	fetchObserver.Err(errors.New("error"))
-	res, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	res, err := sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -249,7 +249,7 @@ func TestDistributedStaleStorageDeletes(t *testing.T) {
 
 	key := "key1"
 	fetchObserver.Response(key)
-	_, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	_, err := sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -271,7 +271,7 @@ func TestDistributedStaleStorageDeletes(t *testing.T) {
 	// ErrNotFound. This should signal to the cache that the record has been
 	// deleted at the underlying data source.
 	fetchObserver.Err(sturdyc.ErrNotFound)
-	res, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	res, err := sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if !errors.Is(err, sturdyc.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -303,7 +303,7 @@ func TestDistributedStaleStorageConvertsToMissingRecord(t *testing.T) {
 
 	key := "key1"
 	fetchObserver.Response(key)
-	_, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	_, err := sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -325,7 +325,7 @@ func TestDistributedStaleStorageConvertsToMissingRecord(t *testing.T) {
 	// ErrNotFound. This should signal to the cache that the record has been
 	// deleted at the underlying data source.
 	fetchObserver.Err(sturdyc.ErrNotFound)
-	res, err := sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	res, err := sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if !errors.Is(err, sturdyc.ErrMissingRecord) {
 		t.Fatalf("expected ErrMissingRecord, got %v", err)
 	}
@@ -348,7 +348,7 @@ func TestDistributedStaleStorageConvertsToMissingRecord(t *testing.T) {
 	c.Delete(key)
 	clock.Add(time.Minute * 2)
 
-	res, err = sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	res, err = sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -366,7 +366,7 @@ func TestDistributedStaleStorageConvertsToMissingRecord(t *testing.T) {
 	// And now we'll get it from the distributed storage without
 	// a fetch to ensure that the conversion propagated.
 	c.Delete(key)
-	res, err = sturdyc.GetFetch(ctx, c, key, fetchObserver.Fetch)
+	res, err = sturdyc.GetOrFetch(ctx, c, key, fetchObserver.Fetch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -395,7 +395,7 @@ func TestDistributedStorageBatch(t *testing.T) {
 	keyFn := c.BatchKeyFn("item")
 	firstBatchOfIDs := []string{"1", "2", "3"}
 	fetchObserver.BatchResponse(firstBatchOfIDs)
-	_, err := sturdyc.GetFetchBatch(ctx, c, firstBatchOfIDs, keyFn, fetchObserver.FetchBatch)
+	_, err := sturdyc.GetOrFetchBatch(ctx, c, firstBatchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -423,7 +423,7 @@ func TestDistributedStorageBatch(t *testing.T) {
 	// FetchBatch function should not get called for IDs 1-3.
 	fetchObserver.BatchResponse([]string{"4", "5", "6"})
 	secondBatchOfIDs := []string{"1", "2", "3", "4", "5", "6"}
-	res, err := sturdyc.GetFetchBatch(ctx, c, secondBatchOfIDs, keyFn, fetchObserver.FetchBatch)
+	res, err := sturdyc.GetOrFetchBatch(ctx, c, secondBatchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -463,7 +463,7 @@ func TestDistributedStaleStorageBatch(t *testing.T) {
 	keyFn := c.BatchKeyFn("item")
 	firstBatchOfIDs := []string{"1", "2", "3"}
 	fetchObserver.BatchResponse(firstBatchOfIDs)
-	_, err := sturdyc.GetFetchBatch(ctx, c, firstBatchOfIDs, keyFn, fetchObserver.FetchBatch)
+	_, err := sturdyc.GetOrFetchBatch(ctx, c, firstBatchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -491,7 +491,7 @@ func TestDistributedStaleStorageBatch(t *testing.T) {
 	clock.Add(staleDuration + 1)
 	fetchObserver.Err(errors.New("error"))
 
-	res, err := sturdyc.GetFetchBatch(ctx, c, firstBatchOfIDs, keyFn, fetchObserver.FetchBatch)
+	res, err := sturdyc.GetOrFetchBatch(ctx, c, firstBatchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -528,7 +528,7 @@ func TestDistributedStorageBatchDeletes(t *testing.T) {
 	keyFn := c.BatchKeyFn("item")
 	batchOfIDs := []string{"1", "2", "3"}
 	fetchObserver.BatchResponse(batchOfIDs)
-	_, err := sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	_, err := sturdyc.GetOrFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -557,7 +557,7 @@ func TestDistributedStorageBatchDeletes(t *testing.T) {
 	// ID has been deleted at the underlying data source.
 	clock.Add(staleDuration + 1)
 	fetchObserver.BatchResponse([]string{"1", "2"})
-	res, err := sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	res, err := sturdyc.GetOrFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -596,7 +596,7 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	keyFn := c.BatchKeyFn("item")
 	batchOfIDs := []string{"1", "2", "3"}
 	fetchObserver.BatchResponse(batchOfIDs)
-	_, err := sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	_, err := sturdyc.GetOrFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -625,7 +625,7 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	// ID has been deleted at the underlying data source.
 	clock.Add(staleDuration + 1)
 	fetchObserver.BatchResponse([]string{"1", "2"})
-	res, err := sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	res, err := sturdyc.GetOrFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -654,7 +654,7 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	clock.Add(staleDuration + 1)
 	fetchObserver.BatchResponse(batchOfIDs)
 
-	res, err = sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	res, err = sturdyc.GetOrFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -677,7 +677,7 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	for _, id := range batchOfIDs {
 		c.Delete(keyFn(id))
 	}
-	res, err = sturdyc.GetFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	res, err = sturdyc.GetOrFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

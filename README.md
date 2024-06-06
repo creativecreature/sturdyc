@@ -77,8 +77,8 @@ go get github.com/creativecreature/sturdyc
 The package exports the following functions:
 
 - Use [`Get`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Get) to get a record from the cache.
-- Use [`GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetFetch) to have the cache fetch and store a record.
-- Use [`GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetFetchBatch) to have the cache fetch and store a batch of records.
+- Use [`GetOrFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetOrFetch) to have the cache fetch and store a record.
+- Use [`GetOrFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.GetOrFetchBatch) to have the cache fetch and store a batch of records.
 - Use [`Set`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Set) to write a record to the cache.
 - Use [`SetMany`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.SetMany) to write multiple records to the cache.
 - Use [`Delete`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Client.Delete) to delete a record from the cache.
@@ -129,7 +129,7 @@ Preventing this has been one of the key objectives for this package. We do not
 want to cause a significant load on the underlying data source every time a key
 is missing or a record expires.
 
-The `GetFetch` function takes a key and a function for retrieving the data if
+The `GetOrFetch` function takes a key and a function for retrieving the data if
 it's not in the cache. The cache is going to ensure that we never have more
 than a single request per key. It achieves this by tracking all of the
 in-flight requests:
@@ -147,7 +147,7 @@ in-flight requests:
 		wg.Add(1)
 		go func() {
 			// We can ignore the error given the fetchFn we're using.
-			val, _ := cacheClient.GetFetch(context.Background(), "key2", fetchFn)
+			val, _ := cacheClient.GetOrFetch(context.Background(), "key2", fetchFn)
 			log.Printf("got value: %d\n", val)
 			wg.Done()
 		}()
@@ -173,7 +173,7 @@ and that the fetchFn only got called once:
 2024/05/21 08:06:29 1337 true
 ```
 
-We can use the `GetFetchBatch` function for data sources that supports batching.
+We can use the `GetOrFetchBatch` function for data sources that supports batching.
 To demonstrate this, I'll create a mock function that sleeps for `5` seconds,
 and then returns a map with a numerical value for every ID:
 
@@ -218,7 +218,7 @@ we can now request each batch in a separate goroutine:
 ```go
 	for _, batch := range batches {
 		go func() {
-			res, _ := cacheClient.GetFetchBatch(context.Background(), batch, keyPrefixFn, fetchFn)
+			res, _ := cacheClient.GetOrFetchBatch(context.Background(), batch, keyPrefixFn, fetchFn)
 			log.Printf("got batch: %v\n", res)
 		}()
 	}
@@ -238,7 +238,7 @@ Each goroutine is going to request two random IDs from our batches:
 		wg.Add(1)
 		go func() {
 			ids := []string{batches[rand.IntN(2)][rand.IntN(4)], batches[rand.IntN(2)][rand.IntN(4)]}
-			res, _ := cacheClient.GetFetchBatch(context.Background(), ids, keyPrefixFn, fetchFn)
+			res, _ := cacheClient.GetOrFetchBatch(context.Background(), ids, keyPrefixFn, fetchFn)
 			log.Printf("got batch: %v\n", res)
 			wg.Done()
 		}()
@@ -324,7 +324,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		log.Printf("Fetching value for key: %s\n", key)
 		return "value", nil
 	}
-	return a.GetFetch(ctx, key, fetchFn)
+	return a.GetOrFetch(ctx, key, fetchFn)
 }
 ```
 
@@ -413,7 +413,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		}
 		return "", errors.New("error this key does not exist")
 	}
-	return a.GetFetch(ctx, key, fetchFn)
+	return a.GetOrFetch(ctx, key, fetchFn)
 }
 ```
 
@@ -510,7 +510,7 @@ iteration:
 ```
 
 **Please note** that we only have to return the `sturdyc.ErrNotFound` when
-we're using `GetFetch`. For `GetFetchBatch`, we'll simply omit the key from the
+we're using `GetOrFetch`. For `GetOrFetchBatch`, we'll simply omit the key from the
 map we're returning. I think this inconsistency is a little unfortunate, but it
 was the best API I could come up with. Having to return an error like this if
 just a single id wasn't found:
@@ -577,7 +577,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		// This error tells the cache that the data does not exist at the source.
 		return "", sturdyc.ErrStoreMissingRecord
 	}
-	return a.GetFetch(ctx, key, fetchFn)
+	return a.GetOrFetch(ctx, key, fetchFn)
 }
 ```
 
@@ -634,7 +634,7 @@ refreshes and then transitions into having a value:
 ...
 ```
 
-**Please note** that this functionality is _implicit_ for `GetFetchBatch`:
+**Please note** that this functionality is _implicit_ for `GetOrFetchBatch`:
 
 ```go
 	batchFetchFn := func(_ context.Context, cacheMisses []string) (map[string]string, error) {
@@ -708,7 +708,7 @@ func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, er
 		return response, nil
 	}
 
-	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
+	return a.GetOrFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 ```
 
@@ -822,7 +822,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 		}
 		return response, nil
 	}
-	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
+	return a.GetOrFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 ```
 
@@ -1007,7 +1007,7 @@ func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
 		return response.OrderStatus, nil
 	}
 
-	return o.GetFetch(ctx, id, fetchFn)
+	return o.GetOrFetch(ctx, id, fetchFn)
 }
 ```
 
@@ -1038,7 +1038,7 @@ func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
 		return response.OrderStatus, nil
 	}
 
-	return o.GetFetch(ctx, id, fetchFn)
+	return o.GetOrFetch(ctx, id, fetchFn)
 }
 ```
 
@@ -1127,8 +1127,8 @@ type assertions.
 
 If you want to avoid this, you can use any of the package level exports:
 
-- [`GetFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetch)
-- [`GetFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetFetchBatch)
+- [`GetOrFetch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetOrFetch)
+- [`GetOrFetchBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#GetOrFetchBatch)
 - [`Passthrough`](https://pkg.go.dev/github.com/creativecreature/sturdyc#Passthrough)
 - [`PassthroughBatch`](https://pkg.go.dev/github.com/creativecreature/sturdyc#PassthroughBatch)
 
@@ -1157,7 +1157,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string) (map[string]st
 		}
 		return response, nil
 	}
-	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+	return sturdyc.GetOrFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
 }
 
 func (a *OrderAPI) DeliveryTime(ctx context.Context, ids []string) (map[string]time.Time, error) {
@@ -1169,7 +1169,7 @@ func (a *OrderAPI) DeliveryTime(ctx context.Context, ids []string) (map[string]t
 		}
 		return response, nil
 	}
-	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+	return sturdyc.GetOrFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
 }
 ```
 

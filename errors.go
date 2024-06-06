@@ -9,14 +9,14 @@ var (
 	// that functionality enabled. Missing records are refreshed like any other
 	// record, and if your FetchFn returns a value for it, the record will no
 	// longer be considered missing. Please note that this only applies to
-	// client.GetFetch and client.Passthrough. For client.GetFetchBatch and
+	// client.GetOrFetch and client.Passthrough. For client.GetOrFetchBatch and
 	// client.PassthroughBatch, this works implicitly if you return
 	// a map without the ID, and have store missing records enabled.
 	ErrNotFound = errors.New("sturdyc: err not found")
-	// ErrMissingRecord is returned by client.GetFetch and client.Passthrough when a record has been marked
+	// ErrMissingRecord is returned by client.GetOrFetch and client.Passthrough when a record has been marked
 	// as missing. The cache will still try to refresh the record in the background if it's being requested.
 	ErrMissingRecord = errors.New("sturdyc: the record has been marked as missing in the cache")
-	// ErrOnlyCachedRecords is returned by client.GetFetchBatch and client.PassthroughBatch
+	// ErrOnlyCachedRecords is returned by client.GetOrFetchBatch and client.PassthroughBatch
 	// when some of the requested records are available in the cache, but the attempt to
 	// fetch the remaining records failed. As the consumer, you can then decide whether to
 	// proceed with the cached records or if the entire batch is necessary.

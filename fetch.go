@@ -56,17 +56,17 @@ func getFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn F
 	return callAndCache(ctx, c, key, wrappedFetch)
 }
 
-// GetFetch attempts to retrieve the specified key from the cache. If the value
+// GetOrFetch attempts to retrieve the specified key from the cache. If the value
 // is absent, it invokes the "fetchFn" function to obtain it and then stores
-// the result. Additionally, when background refreshes is enabled, GetFetch
+// the result. Additionally, when background refreshes is enabled, GetOrFetch
 // determines if the record needs refreshing and, if necessary, schedules this
 // task for background execution.
-func (c *Client[T]) GetFetch(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
+func (c *Client[T]) GetOrFetch(ctx context.Context, key string, fetchFn FetchFn[T]) (T, error) {
 	return getFetch[T, T](ctx, c, key, fetchFn)
 }
 
-// GetFetch is a convenience function that performs type assertion on the result of client.GetFetch.
-func GetFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
+// GetOrFetch is a convenience function that performs type assertion on the result of client.GetOrFetch.
+func GetOrFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn FetchFn[V]) (V, error) {
 	res, err := getFetch[V, T](ctx, c, key, fetchFn)
 	return unwrap[V](res, err)
 }
@@ -104,17 +104,17 @@ func getFetchBatch[V, T any](ctx context.Context, c *Client[T], ids []string, ke
 	return cachedRecords, nil
 }
 
-// GetFetchBatch attempts to retrieve the specified ids from the cache. If any
+// GetOrFetchBatch attempts to retrieve the specified ids from the cache. If any
 // of the values are absent, it invokes the fetchFn function to obtain them and
 // then stores the result. Additionally, when background refreshes is enabled,
-// GetFetch determines if any of the records needs refreshing and, if
+// GetOrFetch determines if any of the records needs refreshing and, if
 // necessary, schedules this to be performed in the background.
-func (c *Client[T]) GetFetchBatch(ctx context.Context, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) (map[string]T, error) {
+func (c *Client[T]) GetOrFetchBatch(ctx context.Context, ids []string, keyFn KeyFn, fetchFn BatchFetchFn[T]) (map[string]T, error) {
 	return getFetchBatch[T, T](ctx, c, ids, keyFn, fetchFn)
 }
 
-// GetFetchBatch is a convenience function that performs type assertion on the result of client.GetFetchBatch.
-func GetFetchBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
+// GetOrFetchBatch is a convenience function that performs type assertion on the result of client.GetOrFetchBatch.
+func GetOrFetchBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
 	res, err := getFetchBatch[V, T](ctx, c, ids, keyFn, fetchFn)
 	return unwrapBatch[V](res, err)
 }
