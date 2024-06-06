@@ -26,8 +26,21 @@ func WithEvictionInterval(interval time.Duration) Option {
 	}
 }
 
-// WithBackgroundRefreshes...
-func WithBackgroundRefreshes(minRefreshTime, maxRefreshTime, retryBaseDelay time.Duration) Option {
+// WithMissingRecordStorage allows the cache to mark keys as missing from the underlying data source.
+func WithMissingRecordStorage() Option {
+	return func(c *Config) {
+		c.storeMissingRecords = true
+	}
+}
+
+// WithEarlyRefreshes instructs the cache to refresh the keys that are in
+// active rotation, thereby preventing them from ever expiring. This can have a
+// significant impact on your application's latency as you're able to
+// continuously serve frequently used keys from memory. The background refresh
+// gets scheduled when the key is requested again after a random time between
+// minRefreshTime and maxRefreshTime. This is an important distinction because
+// it means that the cache won't just naively refresh every key it's ever seen.
+func WithEarlyRefreshes(minRefreshTime, maxRefreshTime, retryBaseDelay time.Duration) Option {
 	return func(c *Config) {
 		c.refreshInBackground = true
 		c.minRefreshTime = minRefreshTime
@@ -36,18 +49,13 @@ func WithBackgroundRefreshes(minRefreshTime, maxRefreshTime, retryBaseDelay time
 	}
 }
 
-// WithMissingRecordStorage allows the cache to mark keys as missing from the underlying data source.
-func WithMissingRecordStorage() Option {
-	return func(c *Config) {
-		c.storeMissingRecords = true
-	}
-}
-
-// WithRefreshBuffering will make the cache refresh data from batchable
+// WithRefreshCoalescing will make the cache refresh data from batchable
 // endpoints more efficiently. It is going to create a buffer for each cache
 // key permutation, and gather IDs until the bufferSize is reached, or the
 // bufferDuration has passed.
-func WithRefreshBuffering(bufferSize int, bufferDuration time.Duration) Option {
+//
+// NOTE: This requires the WithEarlyRefreshes functionality to be enabled.
+func WithRefreshCoalescing(bufferSize int, bufferDuration time.Duration) Option {
 	return func(c *Config) {
 		c.bufferRefreshes = true
 		c.bufferSize = bufferSize

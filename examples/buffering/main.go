@@ -61,15 +61,15 @@ func main() {
 	// Whether to store misses in the sturdyc. This can be useful to
 	// prevent the cache from fetching a non-existent key repeatedly.
 
-	// With refresh buffering enabled, the cache will buffer refreshes
+	// With refresh coalescing enabled, the cache will buffer refreshes
 	// until the batch size is reached or the buffer timeout is hit.
 	batchSize := 3
 	batchBufferTimeout := time.Second * 30
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
-		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithRefreshCoalescing(batchSize, batchBufferTimeout),
 	)
 
 	// We will fetch these IDs using various option sets, meaning that the ID alone

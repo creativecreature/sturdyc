@@ -56,7 +56,7 @@ func main() {
 
 	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 		sturdyc.WithMissingRecordStorage(),
 	)
 

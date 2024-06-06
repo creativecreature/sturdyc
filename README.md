@@ -16,23 +16,25 @@ It has all the functionality you would expect from a caching library, but what
 **sets it apart** is all the features you get that has been designed to
 make it easier to build highly _performant_ and _robust_ applications.
 
-You can enable _background refreshes_ which instructs the cache to refresh the
+You can enable _early refreshes_ which instructs the cache to refresh the
 keys which are in active rotation, thereby preventing them from ever expiring.
 This can have a huge impact on an applications latency as you're able to
 continiously serve data from memory:
 
 ```go
-sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, exponentialBackOff)
+sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, exponentialBackOff)
 ```
 
 There is also excellent support for retrieving and caching data from batchable
 data sources. The cache disassembles the responses and then caches each record
 individually based on the permutations of the options with which it was
 fetched. To significantly reduce your applications outgoing requests to these
-data sources, you can instruct the cache to use _refresh buffering_:
+data sources, you can instruct the cache to use _refresh coalescing_ which will
+create a buffer for each option set and gather IDs until the `idealBatchSize`
+is reached, or the `batchBufferTimeout` expires:
 
 ```go
-sturdyc.WithRefreshBuffering(idealBatchSize, batchBufferTimeout)
+sturdyc.WithRefreshCoalescing(idealBatchSize, batchBufferTimeout)
 ```
 
 `sturdyc` performs _in-flight_ tracking for every key. This works for batching
@@ -56,11 +58,11 @@ build on each other, and many share configurations. Here is a brief overview of
 what the examples are going to cover:
 
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
-- [**background refreshes**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#background-refreshes)
+- [**early refreshes**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#early-refreshes)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
 - [**caching batch endpoints per record**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#batch-endpoints)
 - [**cache key permutations**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#cache-key-permutations)
-- [**refresh buffering**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-buffering)
+- [**refresh coalescing**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#refresh-coalescing)
 - [**request passthrough**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#passthrough)
 - [**distributed caching**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#distributed-caching)
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
@@ -267,19 +269,18 @@ to pick IDs from different batches:
 And on the last line, we can see that we only generated 3 outgoing requests. The
 entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/basic)
 
-## Background refreshes
+## Early refreshes
 
-It's fairly common to consume a data source where you have a rough idea of how
-often the data might change, or where it is acceptable for the data to be a
-couple of milliseconds old. It could also be that the data source has a rate
-limit, and that you're only allowed to query it once every second.
+Being able to prevent your most frequently used records from ever expiring can
+have a significant impact on your application's latency. Therefore, the package
+provides a `WithEarlyRefreshes` option, which instructs the cache to
+continuously refresh these records in the background.
 
-For these type of use cases, you can configure the cache to perform background
-refreshes. A refresh is scheduled if a key is **requested again** after a
-configurable amount of time has passed. This is an important distinction
-because it means that the cache doesn't just naively refresh every key it's
-ever seen. Instead, it only refreshes the records that are actually in
-rotation, while allowing unused keys to be deleted once their TTL expires.
+A refresh gets scheduled if a key is **requested again** after a configurable
+amount of time has passed. This is an important distinction because it means
+that the cache doesn't just naively refresh every key it's ever seen. Instead,
+it only refreshes the records that are actually in rotation, while allowing
+unused keys to be deleted once their TTL expires.
 
 Below is an example configuration:
 
@@ -287,7 +288,8 @@ Below is an example configuration:
 func main() {
 	// Set a minimum and maximum refresh delay for the record. This is
 	// used to spread out the refreshes of our entries evenly over time.
-	// We don't want our outgoing requests graph to look like a comb.
+	// We don't want our outgoing requests graph to look like a comb that
+    // sends a spike of refreshes every 30 ms.
 	minRefreshDelay := time.Millisecond * 10
 	maxRefreshDelay := time.Millisecond * 30
 	// The base used for exponential backoff when retrying a refresh. Most of the
@@ -301,7 +303,7 @@ func main() {
 
 	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 }
 ```
@@ -384,7 +386,7 @@ Additionally, you'll be able to set a high TTL if you want to provide a
 degraded experience by continuously serving the most recent data you have
 cached even when an upstream system encounters issues and the refreshes begin
 to fail. The values for `minRefreshDelay` and `maxRefreshDelay` that we pass to
-`sturdyc.WithBackgroundRefreshes` should specify an optimal interval of how
+`sturdyc.WithEarlyRefreshes` should specify an optimal interval of how
 fresh we'd like the data to be. The `TTL` should be set to a duration where
 exceeding it would make the data too outdated to be useful.
 
@@ -589,7 +591,7 @@ func main() {
 	// ...
 
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 		sturdyc.WithMissingRecordStorage(),
 	)
 
@@ -843,7 +845,7 @@ func main() {
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 
 	// We will fetch these IDs using three different option sets.
@@ -921,13 +923,13 @@ go run .
 
 The entire example is available [here.](https://github.com/creativecreature/sturdyc/tree/main/examples/permutations)
 
-# Refresh buffering
+# Refresh coalescing
 
 As seen in the example above, we're storing the records once for every set of
 options. However, we're not really utilizing the fact that the endpoint is
 batchable when we're performing the refreshes.
 
-To make this more efficient, we can enable the **refresh buffering**
+To make this more efficient, we can enable the **refresh coalescing**
 functionality. Internally, the cache is going to create a buffer for every
 cache key permutation. It is then going to collect ids until it reaches a
 certain size, or exceeds a time-based threshold.
@@ -939,15 +941,15 @@ feature:
 func main() {
 	// ...
 
-	// With refresh buffering enabled, the cache will buffer refreshes
+	// With refresh coalescing enabled, the cache will buffer refreshes
 	// until the batch size is reached or the buffer timeout is hit.
 	batchSize := 3
 	batchBufferTimeout := time.Second * 30
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
-		sturdyc.WithRefreshBuffering(batchSize, batchBufferTimeout),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithRefreshCoalescing(batchSize, batchBufferTimeout),
 	)
 
 	// ...
@@ -1116,8 +1118,8 @@ use `any`:
 
 ```go
 	cacheClient := sturdyc.New[any](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.BackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
-		sturdyc.WithRefreshBuffering(10, time.Second*15),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithRefreshCoalescing(10, time.Second*15),
 	)
 ```
 

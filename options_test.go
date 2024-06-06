@@ -77,7 +77,7 @@ func TestPanicsIfRefreshBufferingIsEnabledWithoutStampedeProtection(t *testing.T
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithRefreshBuffering(10, time.Minute),
+		sturdyc.WithRefreshCoalescing(10, time.Minute),
 	)
 }
 
@@ -91,8 +91,8 @@ func TestPanicsIfTheRefreshBufferSizeIsLessThanOne(t *testing.T) {
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithBackgroundRefreshes(time.Minute, time.Hour, time.Second),
-		sturdyc.WithRefreshBuffering(0, time.Minute),
+		sturdyc.WithEarlyRefreshes(time.Minute, time.Hour, time.Second),
+		sturdyc.WithRefreshCoalescing(0, time.Minute),
 	)
 }
 
@@ -106,8 +106,8 @@ func TestPanicsIfTheRefreshBufferTimeoutIsLessThanOne(t *testing.T) {
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithBackgroundRefreshes(time.Minute, time.Hour, time.Second),
-		sturdyc.WithRefreshBuffering(10, 0),
+		sturdyc.WithEarlyRefreshes(time.Minute, time.Hour, time.Second),
+		sturdyc.WithRefreshCoalescing(10, 0),
 	)
 }
 
@@ -135,7 +135,7 @@ func TestPanicsIfTheMinRefreshTimeIsGreaterThanTheMaxRefreshTime(t *testing.T) {
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithBackgroundRefreshes(time.Hour, time.Minute, time.Second),
+		sturdyc.WithEarlyRefreshes(time.Hour, time.Minute, time.Second),
 	)
 }
 
@@ -149,6 +149,6 @@ func TestPanicsIfTheRetryBaseDelayIsLessThanZero(t *testing.T) {
 		}
 	}()
 	sturdyc.New[string](100, 10, time.Minute, 5,
-		sturdyc.WithBackgroundRefreshes(time.Minute, time.Hour, -1),
+		sturdyc.WithEarlyRefreshes(time.Minute, time.Hour, -1),
 	)
 }

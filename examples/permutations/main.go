@@ -61,7 +61,7 @@ func main() {
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 
 	// We will fetch these IDs using various option sets, meaning that the ID alone

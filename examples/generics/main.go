@@ -59,8 +59,8 @@ func main() {
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[any](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
-		sturdyc.WithRefreshBuffering(10, time.Second*15),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithRefreshCoalescing(10, time.Second*15),
 	)
 
 	api := NewOrderAPI(cacheClient)
