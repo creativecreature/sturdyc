@@ -138,6 +138,7 @@ func WithDistributedStorageEarlyRefreshes(storage DistributedStorageEarlyRefresh
 // regarding its interaction with the distributed storage.
 func WithDistributedMetrics(metricsRecorder DistributedMetricsRecorder) Option {
 	return func(c *Config) {
+		c.metricsRecorder = metricsRecorder
 		c.distributedMetricsRecorder = metricsRecorder
 	}
 }
