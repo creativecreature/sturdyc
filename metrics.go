@@ -14,7 +14,7 @@ type MetricsRecorder interface {
 	ShardIndex(int)
 	// CacheBatchRefreshSize is called to report the size of the batch refresh.
 	CacheBatchRefreshSize(size int)
-	// ObserveCacheSize is called to report the size of the cache.
+	// ObserveCacheSize is called to report the size of the cache.metri
 	ObserveCacheSize(callback func() int)
 }
 

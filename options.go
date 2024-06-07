@@ -126,7 +126,7 @@ func WithDistributedStorage(storage DistributedStorage) Option {
 // you are still responsible for managing the TTL and eviction policies for the
 // distributed storage. Sturdyc will only delete records that have been removed
 // at the underlying data source.
-func WithDistributedStorageEarlyRefreshes(storage DistributedStorageEarlyRefreshes, refreshAfter time.Duration) Option {
+func WithDistributedStorageEarlyRefreshes(storage DistributedStorageWithDeletions, refreshAfter time.Duration) Option {
 	return func(c *Config) {
 		c.distributedStorage = storage
 		c.distributedEarlyRefreshes = true
@@ -138,6 +138,7 @@ func WithDistributedStorageEarlyRefreshes(storage DistributedStorageEarlyRefresh
 // regarding its interaction with the distributed storage.
 func WithDistributedMetrics(metricsRecorder DistributedMetricsRecorder) Option {
 	return func(c *Config) {
+		metricsRecorder.ObserveCacheSize(c.getSize)
 		c.metricsRecorder = metricsRecorder
 	}
 }

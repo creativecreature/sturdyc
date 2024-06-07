@@ -22,7 +22,7 @@ type DistributedStorage interface {
 	SetBatch(ctx context.Context, records map[string][]byte)
 }
 
-type DistributedStorageEarlyRefreshes interface {
+type DistributedStorageWithDeletions interface {
 	DistributedStorage
 	Delete(ctx context.Context, key string)
 	DeleteBatch(ctx context.Context, keys []string)

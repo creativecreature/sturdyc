@@ -8,10 +8,6 @@ import (
 	"github.com/creativecreature/sturdyc"
 )
 
-// NOTE: We won't use all of these features in this example. However, I thought
-// that it would be interesting to show how a cache client that makes full use
-// of this functionality might be configured.
-
 // Basic configuration for the cache.
 const (
 	capacity                           = 100_000
@@ -33,13 +29,16 @@ const (
 	bufferTimeout   = 15 * time.Second
 )
 
-func newAPIClient(distributedStorage sturdyc.DistributedStorage) *apiClient {
+// Configuration for how early we want to refresh records in the distributed storage.
+const refreshAfter = time.Second
+
+func newAPIClient(distributedStorage sturdyc.DistributedStorageWithDeletions) *apiClient {
 	return &apiClient{
 		cache: sturdyc.New[any](capacity, numberOfShards, ttl, percentageOfRecordsToEvictWhenFull,
 			sturdyc.WithMissingRecordStorage(),
 			sturdyc.WithEarlyRefreshes(minRefreshTime, maxRefreshTime, retryBaseDelay),
 			sturdyc.WithRefreshCoalescing(idealBufferSize, bufferTimeout),
-			sturdyc.WithDistributedStorage(distributedStorage),
+			sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, refreshAfter),
 		),
 	}
 }
