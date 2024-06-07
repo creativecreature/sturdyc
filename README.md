@@ -16,6 +16,9 @@ It has all the functionality you would expect from a caching library, but what
 **sets it apart** is all the features you get that has been designed to
 make it easier to build highly _performant_ and _robust_ applications.
 
+It is able to sync all the keys and values with a **distributed key-value
+store** of your choosing.
+
 You can enable _early refreshes_ which instructs the cache to refresh the
 keys which are in active rotation, thereby preventing them from ever expiring.
 This can have a huge impact on an applications latency as you're able to
@@ -1079,7 +1082,6 @@ every 2 to 3 retrievals to ensure that it's being kept up-to-date.
 
 This sequence of events will repeat once the TTL expires.
 
-
 # Distributed storage early refreshes
 
 Similar to the in-memory cache, we're also able to use a distributed storage
@@ -1100,14 +1102,13 @@ records with a 60 minute TTL, the cache will continously fallback to these if
 the refreshes were to fail, so the interaction with the distributed storage
 would look something like this:
 
--  Start by trying to retrieve the key from the distributeted storage. If the
-   data is fresh, it's returned immediately and written to the in-memory cache.
--  If the key was found in the distributed storage, but wasn't fresh enough,
-   we'll visit the underlying data source, and then write the response to both
-   the distributed cache and the one we have in-memory.
--  If the call to refresh the data failed, the cache will use the value from the
-   distributed storage as a fallback.
-
+- Start by trying to retrieve the key from the distributeted storage. If the
+  data is fresh, it's returned immediately and written to the in-memory cache.
+- If the key was found in the distributed storage, but wasn't fresh enough,
+  we'll visit the underlying data source, and then write the response to both
+  the distributed cache and the one we have in-memory.
+- If the call to refresh the data failed, the cache will use the value from the
+  distributed storage as a fallback.
 
 However, there is one more scenario we must cover that requires two additional
 methods to be implemented:
@@ -1130,7 +1131,6 @@ policies for the distributed store. The cache will only invoke the delete
 methods when a record has gone missing from the underlying data source. If
 you're using **missing record storage**, it will write the key as a missing
 record instead.
-
 
 # Custom metrics
 
