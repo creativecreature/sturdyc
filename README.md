@@ -1132,6 +1132,9 @@ methods when a record has gone missing from the underlying data source. If
 you're using **missing record storage**, it will write the key as a missing
 record instead.
 
+I've included an example to showcase this functionality
+[here.](https://github.com/creativecreature/sturdyc/tree/main/examples/distributed-early-refreshes)
+
 # Custom metrics
 
 The cache can be configured to report custom metrics for:

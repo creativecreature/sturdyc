@@ -3,18 +3,40 @@ package main
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
+
+	"github.com/creativecreature/sturdyc"
 )
 
-func main() {
-	apiClient := newAPIClient(newDistributedStorage())
+var ids = []string{"1111", "2222", "3333"}
 
-	for i := 0; i < 10; i++ {
-		_, err := apiClient.GetShippingOptions(context.Background(), "1234", "asc")
+// launchContainer will simulate having a container that runs
+// its own in-memory cache, but shares a distributed storage.
+func launchContainer(containerIndex int, storage sturdyc.DistributedStorageWithDeletions) {
+	apiClient := newAPIClient(storage)
+	for i := 0; i < 100; i++ {
+		_, err := apiClient.GetShippingOptions(context.Background(), containerIndex, ids, "asc")
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Println("The shipping options were retrieved successfully!")
-		time.Sleep(250 * time.Millisecond)
+		log.Println("Container", containerIndex, "finished fetching shipping options")
+		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+func main() {
+	distributedStorage := newDistributedStorage()
+	numContainers := 5
+
+	wg := &sync.WaitGroup{}
+	wg.Add(numContainers)
+	for i := 0; i < numContainers; i++ {
+		go func() {
+			launchContainer(i+1, distributedStorage)
+			wg.Done()
+		}()
+		time.Sleep(50 * time.Millisecond)
+	}
+	wg.Wait()
 }
