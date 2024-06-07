@@ -112,14 +112,6 @@ func WithDistributedStorage(storage DistributedStorage) Option {
 	}
 }
 
-// WithDistributedMetrics instructs the cache to report additional metrics
-// regarding the operations it performs with the distributed storage.
-func WithDistributedMetrics(metricsRecorder DistributedMetrics) Option {
-	return func(c *Config) {
-		c.distributedMetricsRecorder = &distributedMetricsRecorder{metricsRecorder}
-	}
-}
-
 // WithDistributedStorageEarlyRefreshes is the distributed equivalent of the
 // "WithEarlyRefreshes" option. It allows distributed records to be refreshed
 // before their TTL expires. If a refresh fails, the cache will fall back to
@@ -142,10 +134,9 @@ func WithDistributedStorageEarlyRefreshes(storage DistributedStorageEarlyRefresh
 	}
 }
 
-// WithDistributedEarlyRefreshMetrics instructs the cache to report additional
-// metrics for instances when a fetch fails and data from the distributed
-// storage is used despite the refreshAfter time having passed.
-func WithDistributedEarlyRefreshMetrics(metricsRecorder DistributedEarlyRefreshMetrics) Option {
+// WithDistributedMetrics instructs the cache to report additional metrics
+// regarding its interaction with the distributed storage.
+func WithDistributedMetrics(metricsRecorder DistributedMetricsRecorder) Option {
 	return func(c *Config) {
 		c.distributedMetricsRecorder = metricsRecorder
 	}

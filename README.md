@@ -1157,7 +1157,6 @@ All you have to do is implement one of these interfaces:
 
 ```go
 type MetricsRecorder interface {
-	CacheHit()
 	CacheMiss()
 	Eviction()
 	ForcedEviction()
@@ -1167,16 +1166,13 @@ type MetricsRecorder interface {
 	ObserveCacheSize(callback func() int)
 }
 
-type DistributedMetrics interface {
+type DistributedMetricsRecorder interface {
 	MetricsRecorder
 	DistributedCacheHit()
 	DistributedCacheMiss()
+	DistributedFallback()
 }
 
-type DistributedEarlyRefreshMetrics interface {
-	DistributedMetrics
-	DistributedStaleFallback()
-}
 ```
 
 and pass it as an option when you create the client:
@@ -1197,15 +1193,6 @@ cacheDistributedMetrics := sturdyc.New[any](
 	evictWhenFullPercentage,
 	sturdyc.WithDistributedStorage(metricsRecorder),
 	sturdyc.WithDistributedMetrics(metricsRecorder),
-)
-
-cacheDistributedMetricsEarlyRefresh := sturdyc.New[any](
-	cacheSize,
-	shardSize,
-	cacheTTL,
-	evictWhenFullPercentage,
-	sturdyc.WithDistributedStorageEarlyRefreshes(metricsRecorder, time.Minute),
-	sturdyc.WithDistributedEarlyRefreshMetrics(metricsRecorder),
 )
 ```
 

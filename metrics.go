@@ -18,27 +18,18 @@ type MetricsRecorder interface {
 	ObserveCacheSize(callback func() int)
 }
 
-type DistributedMetrics interface {
+type DistributedMetricsRecorder interface {
 	MetricsRecorder
 	// DistributedCacheHit is called for every key that results in a cache hit.
 	DistributedCacheHit()
 	// DistributedCacheHit is called for every key that results in a cache miss.
 	DistributedCacheMiss()
+	// DistributedFallback is called when you are using a distributed storage
+	// with early refreshes, and the call for a value was supposed to refresh it,
+	// but the call failed. When that happens, the cache fallbacks to the latest
+	// value from the distributed storage.
+	DistributedFallback()
 }
-
-type DistributedEarlyRefreshMetrics interface {
-	DistributedMetrics
-	// DistributedStaleFallback is called when a value was supposed to be
-	// refreshed, but the call to do so failed. When that happens, the cache
-	// fallbacks to the value from the distributed storage.
-	DistributedStaleFallback()
-}
-
-type distributedMetricsRecorder struct {
-	DistributedMetrics
-}
-
-func (d *distributedMetricsRecorder) DistributedStaleFallback() {}
 
 func (s *shard[T]) reportForcedEviction() {
 	if s.metricsRecorder == nil {
@@ -95,5 +86,5 @@ func (c *Client[T]) reportDistributedStaleFallback() {
 	if c.distributedMetricsRecorder == nil {
 		return
 	}
-	c.distributedMetricsRecorder.DistributedStaleFallback()
+	c.distributedMetricsRecorder.DistributedFallback()
 }
