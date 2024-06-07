@@ -18,7 +18,9 @@ func TestPassthrough(t *testing.T) {
 	numShards := 100
 	ttl := time.Minute
 	evictionPercentage := 10
-	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithNoContinuousEvictions(),
+	)
 
 	id := "1"
 	numPassthroughs := 1000
@@ -74,7 +76,9 @@ func TestPassthroughBatch(t *testing.T) {
 	numShards := 100
 	ttl := time.Minute
 	evictionPercentage := 10
-	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithNoContinuousEvictions(),
+	)
 
 	idBatch := []string{"1", "2", "3"}
 	numPassthroughs := 200

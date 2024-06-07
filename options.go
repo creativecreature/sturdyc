@@ -29,6 +29,16 @@ func WithEvictionInterval(interval time.Duration) Option {
 	}
 }
 
+// WithNoContinuousEvictions improves cache performance when the cache capacity
+// is unlikely to be exceeded. While this setting disables the continuous
+// eviction job, it still allows for the eviction of the least recently used
+// items once the cache reaches its full capacity.
+func WithNoContinuousEvictions() Option {
+	return func(c *Config) {
+		c.disableContinuousEvictions = true
+	}
+}
+
 // WithMissingRecordStorage allows the cache to mark keys as missing from the
 // underlying data source. This allows you to stop streams of outgoing requests
 // for requests that don't exist. The keys will still have the same TTL and

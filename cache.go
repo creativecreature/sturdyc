@@ -25,6 +25,7 @@ type KeyFn func(id string) string
 type Config struct {
 	clock                      Clock
 	evictionInterval           time.Duration
+	disableContinuousEvictions bool
 	metricsRecorder            MetricsRecorder
 	distributedMetricsRecorder DistributedEarlyRefreshMetrics
 	log                        Logger
@@ -97,13 +98,15 @@ func New[T any](capacity, numShards int, ttl time.Duration, evictionPercentage i
 	client.nextShard = 0
 
 	// Run evictions on the shards in a separate goroutine.
-	client.startEvictions()
+	if !cfg.disableContinuousEvictions {
+		client.performContinuousEvictions()
+	}
 
 	return client
 }
 
-// startEvictions is going to be running in a separate goroutine that we're going to prevent from ever exiting.
-func (c *Client[T]) startEvictions() {
+// performContinuousEvictions is going to be running in a separate goroutine that we're going to prevent from ever exiting.
+func (c *Client[T]) performContinuousEvictions() {
 	go func() {
 		ticker, stop := c.clock.NewTicker(c.evictionInterval)
 		defer stop()

@@ -16,18 +16,21 @@ func TestTimeBasedKeys(t *testing.T) {
 
 	clientSecondClock := sturdyc.NewTestClock(time.Now().Truncate(time.Second))
 	relativeTimeClientSecond := sturdyc.New[any](100, 1, time.Hour, 5,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithRelativeTimeKeyFormat(time.Second),
 		sturdyc.WithClock(clientSecondClock),
 	)
 
 	clientMinuteClock := sturdyc.NewTestClock(time.Now().Truncate(time.Minute))
 	relativeTimeClientMinute := sturdyc.New[any](100, 1, time.Hour, 5,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithRelativeTimeKeyFormat(time.Minute),
 		sturdyc.WithClock(clientMinuteClock),
 	)
 
 	clientHourClock := sturdyc.NewTestClock(time.Now().Truncate(time.Hour))
 	relativeTimeClientHour := sturdyc.New[any](100, 1, time.Hour, 5,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithRelativeTimeKeyFormat(time.Hour),
 		sturdyc.WithClock(clientHourClock),
 	)
@@ -73,7 +76,10 @@ func TestTimeBasedKeys(t *testing.T) {
 func TestPermutatedRelativeTimeKeys(t *testing.T) {
 	t.Parallel()
 
-	c := sturdyc.New[any](100, 1, time.Hour, 5, sturdyc.WithRelativeTimeKeyFormat(time.Minute))
+	c := sturdyc.New[any](100, 1, time.Hour, 5,
+		sturdyc.WithNoContinuousEvictions(),
+		sturdyc.WithRelativeTimeKeyFormat(time.Minute),
+	)
 	prefix := "cache-key"
 	stringValue := "string"
 	intValue := 1
@@ -143,7 +149,9 @@ func TestPermutatedRelativeTimeKeys(t *testing.T) {
 func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
 	t.Parallel()
 
-	c := sturdyc.New[any](100, 1, time.Hour, 5)
+	c := sturdyc.New[any](100, 1, time.Hour, 5,
+		sturdyc.WithNoContinuousEvictions(),
+	)
 	type queryParams struct {
 		StringValues []string
 		IntValues    []int
@@ -164,7 +172,9 @@ func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
 func TestPermutatedBatchKeyFn(t *testing.T) {
 	t.Parallel()
 
-	c := sturdyc.New[any](100, 1, time.Hour, 5)
+	c := sturdyc.New[any](100, 1, time.Hour, 5,
+		sturdyc.WithNoContinuousEvictions(),
+	)
 	type queryParams struct {
 		IncludeUpcoming bool
 		// Note that limit isn't exported (lowercase), hence it should be omitted from the key.
@@ -187,7 +197,9 @@ func TestTimePointers(t *testing.T) {
 	t.Parallel()
 
 	type opts struct{ Time *time.Time }
-	cache := sturdyc.New[any](100, 1, time.Hour, 5)
+	cache := sturdyc.New[any](100, 1, time.Hour, 5,
+		sturdyc.WithNoContinuousEvictions(),
+	)
 
 	now := time.Now().Truncate(time.Hour)
 	got := cache.PermutatedKey("key", opts{Time: &now})

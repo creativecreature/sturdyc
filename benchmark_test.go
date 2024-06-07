@@ -56,7 +56,9 @@ func BenchmarkGetConcurrent(b *testing.B) {
 	numShards := 100
 	ttl := time.Hour
 	evictionPercentage := 5
-	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithNoContinuousEvictions(),
+	)
 	c.Set(cacheKey, "value")
 
 	metrics := make(benchmarkMetrics[string], 0)
@@ -77,7 +79,9 @@ func BenchmarkSetConcurrent(b *testing.B) {
 	numShards := 10_000
 	ttl := time.Hour
 	evictionPercentage := 5
-	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage)
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithNoContinuousEvictions(),
+	)
 
 	metrics := make(benchmarkMetrics[string], 0)
 	b.ResetTimer()

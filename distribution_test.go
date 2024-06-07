@@ -139,6 +139,7 @@ func TestDistributedStorage(t *testing.T) {
 	ttl := time.Minute
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithDistributedStorage(distributedStorage),
 	)
 	fetchObserver := NewFetchObserver(1)
@@ -191,6 +192,7 @@ func TestDistributedStaleStorage(t *testing.T) {
 	ttl := time.Minute
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithClock(clock),
 		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, time.Minute),
 	)
@@ -242,6 +244,7 @@ func TestDistributedStaleStorageDeletes(t *testing.T) {
 	ttl := time.Minute
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithClock(clock),
 		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, time.Minute),
 	)
@@ -295,6 +298,7 @@ func TestDistributedStaleStorageConvertsToMissingRecord(t *testing.T) {
 	ttl := time.Minute
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithClock(clock),
 		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, time.Minute),
 		sturdyc.WithMissingRecordStorage(),
@@ -388,6 +392,7 @@ func TestDistributedStorageBatch(t *testing.T) {
 	ttl := time.Minute
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithDistributedStorage(distributedStorage),
 	)
 	fetchObserver := NewFetchObserver(1)
@@ -455,6 +460,7 @@ func TestDistributedStaleStorageBatch(t *testing.T) {
 	ttl := time.Minute
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithClock(clock),
 		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, staleDuration),
 	)
@@ -520,6 +526,7 @@ func TestDistributedStorageBatchDeletes(t *testing.T) {
 	ttl := time.Minute
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithClock(clock),
 		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, staleDuration),
 	)
@@ -587,6 +594,7 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	ttl := time.Minute
 	distributedStorage := &mockStorage{}
 	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
 		sturdyc.WithClock(clock),
 		sturdyc.WithMissingRecordStorage(),
 		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, staleDuration),
