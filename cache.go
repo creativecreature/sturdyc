@@ -26,8 +26,7 @@ type Config struct {
 	clock                      Clock
 	evictionInterval           time.Duration
 	disableContinuousEvictions bool
-	metricsRecorder            MetricsRecorder
-	distributedMetricsRecorder DistributedMetricsRecorder
+	metricsRecorder            DistributedMetricsRecorder
 	log                        Logger
 
 	refreshInBackground bool

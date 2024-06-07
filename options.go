@@ -8,7 +8,7 @@ type Option func(*Config)
 func WithMetrics(recorder MetricsRecorder) Option {
 	return func(c *Config) {
 		recorder.ObserveCacheSize(c.getSize)
-		c.metricsRecorder = recorder
+		c.metricsRecorder = &distributedMetricsRecorder{recorder}
 	}
 }
 
@@ -139,7 +139,6 @@ func WithDistributedStorageEarlyRefreshes(storage DistributedStorageEarlyRefresh
 func WithDistributedMetrics(metricsRecorder DistributedMetricsRecorder) Option {
 	return func(c *Config) {
 		c.metricsRecorder = metricsRecorder
-		c.distributedMetricsRecorder = metricsRecorder
 	}
 }
 

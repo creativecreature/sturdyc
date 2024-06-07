@@ -31,6 +31,16 @@ type DistributedMetricsRecorder interface {
 	DistributedFallback()
 }
 
+type distributedMetricsRecorder struct {
+	MetricsRecorder
+}
+
+func (d *distributedMetricsRecorder) DistributedCacheHit() {}
+
+func (d *distributedMetricsRecorder) DistributedCacheMiss() {}
+
+func (d *distributedMetricsRecorder) DistributedFallback() {}
+
 func (s *shard[T]) reportForcedEviction() {
 	if s.metricsRecorder == nil {
 		return
@@ -72,19 +82,19 @@ func (c *Client[T]) reportBatchRefreshSize(n int) {
 }
 
 func (c *Client[T]) reportDistributedCacheHit(cacheHit bool) {
-	if c.distributedMetricsRecorder == nil {
+	if c.metricsRecorder == nil {
 		return
 	}
 	if !cacheHit {
-		c.distributedMetricsRecorder.DistributedCacheMiss()
+		c.metricsRecorder.DistributedCacheMiss()
 		return
 	}
-	c.distributedMetricsRecorder.DistributedCacheHit()
+	c.metricsRecorder.DistributedCacheHit()
 }
 
 func (c *Client[T]) reportDistributedStaleFallback() {
-	if c.distributedMetricsRecorder == nil {
+	if c.metricsRecorder == nil {
 		return
 	}
-	c.distributedMetricsRecorder.DistributedFallback()
+	c.metricsRecorder.DistributedFallback()
 }
