@@ -12,7 +12,7 @@ import (
 	"github.com/creativecreature/sturdyc"
 )
 
-func demonstrateGetFetch(cacheClient *sturdyc.Client[int]) {
+func demonstrateGetOrFetch(cacheClient *sturdyc.Client[int]) {
 	// The cache has built-in stampede protection where it tracks in-flight
 	// requests for every key.
 	var count atomic.Int32
@@ -27,7 +27,7 @@ func demonstrateGetFetch(cacheClient *sturdyc.Client[int]) {
 		wg.Add(1)
 		go func() {
 			// We can ignore the error given the fetchFn we're using.
-			val, _ := cacheClient.GetFetch(context.Background(), "key2", fetchFn)
+			val, _ := cacheClient.GetOrFetch(context.Background(), "key2", fetchFn)
 			log.Printf("got value: %d\n", val)
 			wg.Done()
 		}()
@@ -39,7 +39,7 @@ func demonstrateGetFetch(cacheClient *sturdyc.Client[int]) {
 	log.Println("")
 }
 
-func demonstrateGetFetchBatch(cacheClient *sturdyc.Client[int]) {
+func demonstrateGetOrFetchBatch(cacheClient *sturdyc.Client[int]) {
 	var count atomic.Int32
 	fetchFn := func(_ context.Context, ids []string) (map[string]int, error) {
 		count.Add(1)
@@ -67,7 +67,7 @@ func demonstrateGetFetchBatch(cacheClient *sturdyc.Client[int]) {
 	// Request the keys  for each batch.
 	for _, batch := range batches {
 		go func() {
-			res, _ := cacheClient.GetFetchBatch(context.Background(), batch, keyPrefixFn, fetchFn)
+			res, _ := cacheClient.GetOrFetchBatch(context.Background(), batch, keyPrefixFn, fetchFn)
 			log.Printf("got batch: %v\n", res)
 		}()
 	}
@@ -81,7 +81,7 @@ func demonstrateGetFetchBatch(cacheClient *sturdyc.Client[int]) {
 		wg.Add(1)
 		go func() {
 			ids := []string{batches[rand.IntN(2)][rand.IntN(4)], batches[rand.IntN(2)][rand.IntN(4)]}
-			res, _ := cacheClient.GetFetchBatch(context.Background(), ids, keyPrefixFn, fetchFn)
+			res, _ := cacheClient.GetOrFetchBatch(context.Background(), ids, keyPrefixFn, fetchFn)
 			log.Printf("got batch: %v\n", res)
 			wg.Done()
 		}()
@@ -109,6 +109,6 @@ func main() {
 	log.Println(cacheClient.Size())
 	log.Println(cacheClient.Get("key1"))
 
-	demonstrateGetFetch(cacheClient)
-	demonstrateGetFetchBatch(cacheClient)
+	demonstrateGetOrFetch(cacheClient)
+	demonstrateGetOrFetchBatch(cacheClient)
 }

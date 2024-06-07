@@ -24,7 +24,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		log.Printf("Fetching value for key: %s\n", key)
 		return "value", nil
 	}
-	return a.GetFetch(ctx, key, fetchFn)
+	return a.GetOrFetch(ctx, key, fetchFn)
 }
 
 func main() {
@@ -60,7 +60,7 @@ func main() {
 
 	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 
 	// Create a new API instance with the cache client.

@@ -25,9 +25,9 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 		if a.count > 3 {
 			return "value", nil
 		}
-		return "", sturdyc.ErrStoreMissingRecord
+		return "", sturdyc.ErrNotFound
 	}
-	return a.GetFetch(ctx, key, fetchFn)
+	return a.GetOrFetch(ctx, key, fetchFn)
 }
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
 
 	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 		sturdyc.WithMissingRecordStorage(),
 	)
 

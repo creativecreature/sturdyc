@@ -39,7 +39,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 		}
 		return response, nil
 	}
-	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
+	return a.GetOrFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 
 func main() {
@@ -61,7 +61,7 @@ func main() {
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 
 	// We will fetch these IDs using various option sets, meaning that the ID alone

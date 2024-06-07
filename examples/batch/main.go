@@ -37,7 +37,7 @@ func (a *API) GetBatch(ctx context.Context, ids []string) (map[string]string, er
 		return response, nil
 	}
 
-	return a.GetFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
+	return a.GetOrFetchBatch(ctx, ids, cacheKeyFn, fetchFn)
 }
 
 func main() {
@@ -59,7 +59,7 @@ func main() {
 
 	// Create a cache client with the specified configuration.
 	cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
 	)
 
 	// Create a new API instance with the cache client.

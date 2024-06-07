@@ -25,7 +25,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string) (map[string]st
 		}
 		return response, nil
 	}
-	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+	return sturdyc.GetOrFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
 }
 
 func (a *OrderAPI) DeliveryTime(ctx context.Context, ids []string) (map[string]time.Time, error) {
@@ -37,7 +37,7 @@ func (a *OrderAPI) DeliveryTime(ctx context.Context, ids []string) (map[string]t
 		}
 		return response, nil
 	}
-	return sturdyc.GetFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
+	return sturdyc.GetOrFetchBatch(ctx, a.cacheClient, ids, cacheKeyFn, fetchFn)
 }
 
 func main() {
@@ -59,8 +59,8 @@ func main() {
 
 	// Create a new cache client with the specified configuration.
 	cacheClient := sturdyc.New[any](capacity, numShards, ttl, evictionPercentage,
-		sturdyc.WithBackgroundRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
-		sturdyc.WithRefreshBuffering(10, time.Second*15),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, retryBaseDelay),
+		sturdyc.WithRefreshCoalescing(10, time.Second*15),
 	)
 
 	api := NewOrderAPI(cacheClient)

@@ -41,7 +41,10 @@ func TestShardDistribution(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			recorder := newTestMetricsRecorder(tc.numShards)
-			c := sturdyc.New[string](tc.capacity, tc.numShards, time.Hour, 5, sturdyc.WithMetrics(recorder))
+			c := sturdyc.New[string](tc.capacity, tc.numShards, time.Hour, 5,
+				sturdyc.WithNoContinuousEvictions(),
+				sturdyc.WithMetrics(recorder),
+			)
 			for i := 0; i < tc.capacity; i++ {
 				key := randKey(tc.keyLength)
 				c.Set(key, "value")
@@ -144,6 +147,7 @@ func TestForcedEvictions(t *testing.T) {
 				time.Hour,
 				tc.evictionPercentage,
 				sturdyc.WithMetrics(recorder),
+				sturdyc.WithNoContinuousEvictions(),
 			)
 
 			// Start by filling the sturdyc.
