@@ -968,21 +968,23 @@ can use the `Passthrough` and `PassthroughBatch` functions. The cache will
 still perform in-flight request tracking and deduplicate your requests.
 
 # Distributed storage
+
 I think it's important to read the previous sections before jumping here in
 order to understand all the heavy lifting `sturdyc` does when it comes to
 creating cache keys, tracking in-flight requests, refreshing records in the
-background to improve latency, and buffering/coalescing to reduce the number of
-round trips your application has to make to the underlying data sources.
+background to improve latency, and buffering/coalescing requests to minimize
+the number of round trips to underlying data sources.
 
-We will still take great advantage of all of these features when we add a
-distributed storage, and the efficiency gains will hopefully allow us to use a
-much cheaper cluster.
+Adding distributed storage to the cache is, from the package's point of view,
+essentially just another data source with a higher priority. Hence, we're still
+able to take great advantage of all the features we've seen so far, and these
+efficiency gains will hopefully allow you to use a much cheaper cluster.
 
-From the cache point of view, the `WithDistributedStorage` option essentially
-just adds another data source with higher priority. Slightly simplified, we can
-think of it like this:
+Slightly simplified, we can think of the cache's interaction with the
+distributed storage like this:
 
 ```go
+// NOTE: This is an example. The cache has this functionality internally.
 func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
 	cacheKey := "order-status-" + id
 	fetchFn := func(ctx context.Context) (string, error) {
@@ -1011,13 +1013,15 @@ func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
 }
 ```
 
+Syncing the keys and values to a distributed storage like this can be highly
+beneficial, especially when we're deploying new containers where the in-memory
+cache will be empty, as it prevents sudden bursts of traffic to the underlying
+data sources.
 
-Having a distributed storage like this can be really beneficial when you have
-to deploy new containers, where the in-memory cache is going to be empty, as it
-avoids a sudden burst of traffic to the underlying data source.
-
-This package has been designed to work with any key-value store, all you have
-to do is implement this interface:
+Keeping the in-memory caches in sync with a distributed storage requires a bit
+more work though. `sturdyc` has therefore been designed to work with an
+abstraction that could represent any key-value store of your choosing, all you
+have to do is implement this interface:
 
 ```go
 type DistributedStorage interface {
@@ -1029,84 +1033,104 @@ type DistributedStorage interface {
 ```
 
 and then pass it to the `WithDistributedStorage` option when you create your
-cache client.
+cache client:
+
+```go
+cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+	sturdyc.WithDistributedStorage(storage),
+)
+```
 
 **Please note** that you are responsible for configuring the TTL and eviction
 policies of this storage. `sturdyc` will only make sure that it's being kept
-up-to-date with the in-memory cache.
+up-to-date with the data it has in-memory.
+
+I've included an example to showcase this functionality
+[here.](https://github.com/creativecreature/sturdyc/tree/main/examples/distribution)
+
+When running that application, you should see output that looks something like
+this:
+
+```go
+❯ go run .
+2024/06/07 10:32:56 Getting key shipping-options-1234-asc from the distributed storage
+2024/06/07 10:32:56 Fetching shipping options from the underlying data source
+2024/06/07 10:32:56 The shipping options were retrieved successfully!
+2024/06/07 10:32:56 Writing key shipping-options-1234-asc to the distributed storage
+2024/06/07 10:32:56 The shipping options were retrieved successfully!
+2024/06/07 10:32:57 The shipping options were retrieved successfully!
+2024/06/07 10:32:57 Getting key shipping-options-1234-asc from the distributed storage
+2024/06/07 10:32:57 The shipping options were retrieved successfully!
+2024/06/07 10:32:57 Getting key shipping-options-1234-asc from the distributed storage
+2024/06/07 10:32:57 The shipping options were retrieved successfully!
+2024/06/07 10:32:57 The shipping options were retrieved successfully!
+2024/06/07 10:32:57 Getting key shipping-options-1234-asc from the distributed storage
+2024/06/07 10:32:58 The shipping options were retrieved successfully!
+2024/06/07 10:32:58 The shipping options were retrieved successfully!
+2024/06/07 10:32:58 Getting key shipping-options-1234-asc from the distributed storage
+2024/06/07 10:32:58 The shipping options were retrieved successfully!
+2024/06/07 10:32:58 Getting key shipping-options-1234-asc from the distributed storage
+2024/06/07 10:32:58 The shipping options were retrieved successfully!
+```
+
+Above we can see that the underlying data source was only visited **once**, and
+the in-memory cache performed a background refresh from the distributed storage
+every 2 to 3 retrievals to ensure that it's being kept up-to-date.
+
+This sequence of events will repeat once the TTL expires.
+
 
 # Distributed storage early refreshes
 
+Similar to the in-memory cache, we're also able to use a distributed storage
+where the data is refreshed before the TTL expires.
 
-
-
-
-
-
-
-I've thought about adding this functionality internally because it would be
-really fun to build. However, there are already a lot of other projects that
-have done this exceptionally well.
-
-Therefore, I've tried to design the API for this package so that it's easy to
-use in **combination** with a distributed key-value store.
-
-Let's use this function as an example:
+This would also allow us to serve stale data if an upstream was to experience
+any downtime:
 
 ```go
-func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
-	fetchFn := func(ctx context.Context) (string, error) {
-		var response OrderStatusResponse
-		err := requests.URL(o.baseURL).
-			Param("id", id).
-			ToJSON(&response).
-			Fetch(ctx)
-		if err != nil {
-			return "", err
-		}
+cacheClient := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+	sturdyc.WithDistributedStorageEarlyRefreshes(storage, time.Minute),
+)
+```
 
-		return response.OrderStatus, nil
-	}
+With the configuration above, we're essentially saying that we'd prefer if the
+data was refreshed once it's more than a minute old. However, if you're writing
+records with a 60 minute TTL, the cache will continously fallback to these if
+the refreshes were to fail, so the interaction with the distributed storage
+would look something like this:
 
-	return o.GetOrFetch(ctx, id, fetchFn)
+-  Start by trying to retrieve the key from the distributeted storage. If the
+   data is fresh, it's returned immediately and written to the in-memory cache.
+-  If the key was found in the distributed storage, but wasn't fresh enough,
+   we'll visit the underlying data source, and then write the response to both
+   the distributed cache and the one we have in-memory.
+-  If the call to refresh the data failed, the cache will use the value from the
+   distributed storage as a fallback.
+
+
+However, there is one more scenario we must cover that requires two additional
+methods to be implemented:
+
+```go
+type DistributedStorageEarlyRefreshes interface {
+	DistributedStorage
+	Delete(ctx context.Context, key string)
+	DeleteBatch(ctx context.Context, keys []string)
 }
 ```
 
-The only modification you would have to make is to check the distributed storage
-first, and then write to it if the key is missing:
+These delete methods will be called when a refresh occurs, and the cache
+notices that it can no longer find the key at the underlying data source. This
+indicates that the key has been deleted, and we will want this change to
+propagate to the distributed key-value store
 
-```go
-func (o *OrderAPI) OrderStatus(ctx context.Context, id string) (string, error) {
-	fetchFn := func(ctx context.Context) (string, error) {
-		// Check redis cache first.
-		if orderStatus, ok := o.redisClient.Get(id); ok {
-			return orderStatus, nil
-		}
+**Please note** that you are still responsible for setting the TTL and eviction
+policies for the distributed store. The cache will only invoke the delete
+methods when a record has gone missing from the underlying data source. If
+you're using **missing record storage**, it will write the key as a missing
+record instead.
 
-		// Fetch the order status from the underlying data source.
-		var response OrderStatusResponse
-		err := requests.URL(o.baseURL).
-			Param("id", id).
-			ToJSON(&response).
-			Fetch(ctx)
-		if err != nil {
-			return "", err
-		}
-
-		// Add the order status to the redis cache.
-		go func() { o.RedisClient.Set(id, response.OrderStatus, time.Hour) }()
-
-		return response.OrderStatus, nil
-	}
-
-	return o.GetOrFetch(ctx, id, fetchFn)
-}
-```
-
-With this setup, `sturdyc` is going to handle request deduplication, refresh
-buffering, and cache key permutations. You are going to gain efficiency by
-enabling batch refreshes, and latency improvements whenever you're able to
-serve from memory.
 
 # Custom metrics
 
@@ -1121,7 +1145,15 @@ The cache can be configured to report custom metrics for:
 - Shard distribution
 - The size of the refresh buckets
 
-All you have to do is implement the `MetricsRecorder` interface:
+There are also distributed metrics if you're using the cache with a
+_distributed storage_, which adds the following metrics in addition to what
+we've seen above:
+
+- Distributed cache hits
+- Distributed cache misses
+- Distributed stale fallback
+
+All you have to do is implement one of these interfaces:
 
 ```go
 type MetricsRecorder interface {
@@ -1134,17 +1166,46 @@ type MetricsRecorder interface {
 	CacheBatchRefreshSize(size int)
 	ObserveCacheSize(callback func() int)
 }
+
+type DistributedMetrics interface {
+	MetricsRecorder
+	DistributedCacheHit()
+	DistributedCacheMiss()
+}
+
+type DistributedEarlyRefreshMetrics interface {
+	DistributedMetrics
+	DistributedStaleFallback()
+}
 ```
 
 and pass it as an option when you create the client:
 
 ```go
-cache := sturdyc.New[any](
+cacheBasicMetrics := sturdyc.New[any](
 	cacheSize,
 	shardSize,
 	cacheTTL,
 	evictWhenFullPercentage,
 	sturdyc.WithMetrics(metricsRecorder),
+)
+
+cacheDistributedMetrics := sturdyc.New[any](
+	cacheSize,
+	shardSize,
+	cacheTTL,
+	evictWhenFullPercentage,
+	sturdyc.WithDistributedStorage(metricsRecorder),
+	sturdyc.WithDistributedMetrics(metricsRecorder),
+)
+
+cacheDistributedMetricsEarlyRefresh := sturdyc.New[any](
+	cacheSize,
+	shardSize,
+	cacheTTL,
+	evictWhenFullPercentage,
+	sturdyc.WithDistributedStorageEarlyRefreshes(metricsRecorder, time.Minute),
+	sturdyc.WithDistributedEarlyRefreshMetrics(metricsRecorder),
 )
 ```
 

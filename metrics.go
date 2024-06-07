@@ -1,23 +1,36 @@
 package sturdyc
 
 type MetricsRecorder interface {
+	// CacheHit is called for every key that results in a cache hit.
 	CacheHit()
+	// CacheMiss is called for every key that results in a cache miss.
 	CacheMiss()
+	// ForcedEviction is called when the cache reaches its capacity, and has to
+	// evict keys in order to write a new one.
 	ForcedEviction()
+	// EntiresEvicted is called when the cache evicts keys from a shard.
 	EntriesEvicted(int)
+	// ShardIndex is called to report which shard it was that performed an operation.
 	ShardIndex(int)
+	// CacheBatchRefreshSize is called to report the size of the batch refresh.
 	CacheBatchRefreshSize(size int)
+	// ObserveCacheSize is called to report the size of the cache.
 	ObserveCacheSize(callback func() int)
 }
 
 type DistributedMetrics interface {
 	MetricsRecorder
+	// DistributedCacheHit is called for every key that results in a cache hit.
 	DistributedCacheHit()
+	// DistributedCacheHit is called for every key that results in a cache miss.
 	DistributedCacheMiss()
 }
 
 type DistributedEarlyRefreshMetrics interface {
 	DistributedMetrics
+	// DistributedStaleFallback is called when a value was supposed to be
+	// refreshed, but the call to do so failed. When that happens, the cache
+	// fallbacks to the value from the distributed storage.
 	DistributedStaleFallback()
 }
 
