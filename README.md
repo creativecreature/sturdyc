@@ -6,43 +6,131 @@
 [![Test](https://github.com/creativecreature/sturdyc/actions/workflows/main.yml/badge.svg)](https://github.com/creativecreature/sturdyc/actions/workflows/main.yml)
 [![codecov](https://codecov.io/gh/creativecreature/sturdyc/graph/badge.svg?token=CYSKW3Z7E6)](https://codecov.io/gh/creativecreature/sturdyc)
 
-`Sturdyc` is a highly concurrent cache that supports non-blocking reads and has
-a configurable number of shards that makes it possible to achieve writes without
-any lock contention. The [xxhash](https://github.com/cespare/xxhash) algorithm
-is used for efficient key distribution. Evictions are performed per shard based
-on recency at O(N) time complexity using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
+`Sturdyc` is a highly concurrent cache that supports **non-blocking reads** and has
+a configurable number of shards that makes it possible to achieve writes
+**without any lock contention**.
+
+The [xxhash](https://github.com/cespare/xxhash) algorithm is used for efficient
+key distribution.
+
+The cache performs continuous evictions of each shard. There are options to
+both disable this functionality and tweak the interval. When you instantiate a
+cache client, you're going to set the percentage of records to evict if the
+capacity is reached. All evictions are performed per shard based on recency,
+with an _O(N) time complexity_, using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
 It has all the functionality you would expect from a caching library, but what
-**sets it apart** is all the features you get that has been designed to
-make it easier to build highly _performant_ and _robust_ applications.
+**sets it apart** are the features designed to make I/O heavy applications both
+_robust_ and _highly performant_.
 
-It is able to sync all the keys and values with a **distributed key-value
-store** of your choosing.
+The API is easy to use, making it possible to integrate `sturdyc` into existing
+code bases without much effort. Let's use the following methods from an API
+client that retrieves order data as an example:
 
-You can enable _early refreshes_ which instructs the cache to refresh the
+```go
+func (c *Client) Order(ctx context.Context, id string) (Order, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	var response Order
+	err := requests.URL(c.orderURL).
+		Pathf("/order/%s", id).
+		ToJSON(&response).
+		Fetch(timeoutCtx)
+
+	return response, err
+}
+
+func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	var response map[string]Order
+	err := requests.URL(c.orderURL).
+		Path("/orders").
+		Param("ids", strings.Join(ids, ",")).
+		ToJSON(&response).
+		Fetch(timeoutCtx)
+
+	return response, err
+}
+```
+
+All we have to do is wrap the fetching part in a function and give it to the
+cache:
+
+```go
+func (c *Client) Order(ctx context.Context, id string) (Order, error) {
+	fetchFunc := func(ctx context.Context) (Order, error) {
+		timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+
+		var response Order
+		err := requests.URL(c.orderURL).
+			Pathf("/order/%s", id).
+			ToJSON(&response).
+			Fetch(timeoutCtx)
+
+		return response, err
+	}
+
+	return c.cache.GetOrFetch(ctx, "order-"+id, fetchFunc)
+}
+
+func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, error) {
+	fetchFunc := func(ctx context.Context, cacheMisses []string) (map[string]Order, error) {
+		timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+
+		var response map[string]Order
+		err := requests.URL(c.orderURL).
+			Path("/orders").
+			Param("ids", strings.Join(cacheMisses, ",")).
+			ToJSON(&response).
+			Fetch(timeoutCtx)
+
+		return response, err
+	}
+
+	return c.cache.GetOrFetchBatch(ctx, ids, c.persistentCache.BatchKeyFn("orders"), fetchFunc)
+}
+```
+
+In the example above, we fetched the data over HTTP, but it's just as easy to
+wrap a database query, a remote procedure call, or a disk read.
+
+By doing this, `sturdyc` is going to automatically perform _in-flight_ tracking
+for every key. This works for batch operations too where it's able to
+deduplicate a batch of cache misses, and then assemble the response by picking
+records from multiple in-flight requests.
+
+You can also enable _early refreshes_ which instructs the cache to refresh the
 keys which are in active rotation, thereby preventing them from ever expiring.
 This can have a huge impact on an applications latency as you're able to
-continiously serve data from memory:
+continiously serve the most frequently used data from memory:
 
 ```go
 sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, exponentialBackOff)
 ```
 
 There is also excellent support for retrieving and caching data from batchable
-data sources. The cache disassembles the responses and then caches each record
+data sources. The cache disassembles the responses and caches each record
 individually based on the permutations of the options with which it was
-fetched. To significantly reduce your applications outgoing requests to these
-data sources, you can instruct the cache to use _refresh coalescing_ which will
-create a buffer for each option set and gather IDs until the `idealBatchSize`
-is reached, or the `batchBufferTimeout` expires:
+fetched. This functionality can **significantly reduce** your application's
+outgoing requests to these data sources by enabling _refresh coalescing_, which
+creates a buffer for each option set and gathers IDs until the `idealBatchSize`
+is reached or the `batchBufferTimeout` expires:
 
 ```go
 sturdyc.WithRefreshCoalescing(idealBatchSize, batchBufferTimeout)
 ```
 
-`sturdyc` performs _in-flight_ tracking for every key. This works for batching
-too where it's able to deduplicate a batch of cache misses, and then assemble
-the response by picking records from multiple in-flight requests.
+You can also configure `sturdyc` to synchronize its cache with a **distributed
+key-value store** of your choosing:
+
+```go
+sturdyc.WithDistributedStorage(storage),
+```
 
 Below is a screenshot showing the latency improvements we've observed after
 replacing our old cache with this package:
