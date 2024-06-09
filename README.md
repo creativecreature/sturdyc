@@ -23,6 +23,7 @@ It has all the functionality you would expect from a caching library, but what
 **sets it apart** are the features designed to make I/O heavy applications both
 _robust_ and _highly performant_.
 
+### Integrating `sturdyc` with your application
 The API is easy to use, making it possible to integrate `sturdyc` into existing
 code bases without much effort. Let's use the following methods from an API
 client that retrieves order data as an example:
