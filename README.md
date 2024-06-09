@@ -141,6 +141,7 @@ key-value store** of your choosing:
 sturdyc.WithDistributedStorage(storage),
 ```
 
+#### Latency improvements
 Below is a screenshot showing the latency improvements we've observed after
 replacing our old cache with this package:
 
