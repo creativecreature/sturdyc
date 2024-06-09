@@ -23,7 +23,7 @@ It has all the functionality you would expect from a caching library, but what
 **sets it apart** are the features designed to make I/O heavy applications both
 _robust_ and _highly performant_.
 
-### Integrating `sturdyc` with your application
+### Integrating `sturdyc` with your application:
 The API is easy to use, making it possible to integrate `sturdyc` into existing
 code bases without much effort. Let's use the following methods from an API
 client that retrieves order data as an example:
@@ -100,6 +100,8 @@ func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, er
 In the example above, we fetched the data over HTTP, but it's just as easy to
 wrap a database query, a remote procedure call, or a disk read.
 
+
+### Benefits:
 By doing this, `sturdyc` is going to automatically perform _in-flight_ tracking
 for every key. This works for batch operations too where it's able to
 deduplicate a batch of cache misses, and then assemble the response by picking
