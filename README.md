@@ -154,7 +154,7 @@ more than 90% while still serving data that is refreshed every second. This
 setting is configurable, and you can adjust it to a lower value if you like.
 
 ### Table of contents
-There are examples further down thise file that covers the entire API, and I
+There are examples further down this file that covers the entire API, and I
 encourage you to **read these examples in the order they appear**. Most of them
 build on each other, and many share configurations. Here is a brief overview of
 what the examples are going to cover:
