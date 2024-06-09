@@ -146,6 +146,7 @@ In addition to this, we've seen our number of outgoing requests decrease by
 more than 90% while still serving data that is refreshed every second. This
 setting is configurable, and you can adjust it to a lower value if you like.
 
+### table of contents
 There are examples further down thise file that covers the entire API, and I
 encourage you to **read these examples in the order they appear**. Most of them
 build on each other, and many share configurations. Here is a brief overview of
