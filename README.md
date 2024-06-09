@@ -23,10 +23,10 @@ It has all the functionality you would expect from a caching library, but what
 **sets it apart** are the features designed to make I/O heavy applications both
 _robust_ and _highly performant_.
 
-### Integrating `sturdyc` with your application:
-The API is easy to use, making it possible to integrate `sturdyc` into existing
-code bases without much effort. Let's use the following methods from an API
-client that retrieves order data as an example:
+### Adding `sturdyc` to your application:
+The API is easy to use, which makes it possible to integrate `sturdyc` into
+existing code bases without much effort. Let's use the following methods from
+an API client that retrieves order data as an example:
 
 ```go
 func (c *Client) Order(ctx context.Context, id string) (Order, error) {
@@ -97,16 +97,19 @@ func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, er
 }
 ```
 
-In the example above, we fetched the data over HTTP, but it's just as easy to
-wrap a database query, a remote procedure call, or a disk read.
+In the example above, we're fetching the data over HTTP, but it's just as easy
+to wrap a database query, a remote procedure call, or a disk read.
 
 
 ### Benefits:
+
+#### Deduplication
 By doing this, `sturdyc` is going to automatically perform _in-flight_ tracking
 for every key. This works for batch operations too where it's able to
 deduplicate a batch of cache misses, and then assemble the response by picking
 records from multiple in-flight requests.
 
+#### Early refreshes
 You can also enable _early refreshes_ which instructs the cache to refresh the
 keys which are in active rotation, thereby preventing them from ever expiring.
 This can have a huge impact on an applications latency as you're able to
@@ -116,18 +119,21 @@ continiously serve the most frequently used data from memory:
 sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, exponentialBackOff)
 ```
 
-There is also excellent support for retrieving and caching data from batchable
-data sources. The cache disassembles the responses and caches each record
-individually based on the permutations of the options with which it was
-fetched. This functionality can **significantly reduce** your application's
-outgoing requests to these data sources by enabling _refresh coalescing_, which
-creates a buffer for each option set and gathers IDs until the `idealBatchSize`
-is reached or the `batchBufferTimeout` expires:
+#### Batching
+The cache disassembles the responses from batchable data sources, and caches
+each record individually based on the permutations of the options with which it
+was fetched.
+
+To **significantly reduce** your application's outgoing requests to these data
+sources, you can enable _refresh coalescing_, which creates a buffer for each
+option set and gathers IDs until the `idealBatchSize` is reached or the
+`batchBufferTimeout` expires:
 
 ```go
 sturdyc.WithRefreshCoalescing(idealBatchSize, batchBufferTimeout)
 ```
 
+#### Distributed key-value store
 You can also configure `sturdyc` to synchronize its cache with a **distributed
 key-value store** of your choosing:
 
