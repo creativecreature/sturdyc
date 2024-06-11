@@ -181,8 +181,9 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 			if !c.distributedEarlyRefreshes || c.clock.Since(record.CreatedAt) < c.distributedRefreshAfterDuration {
 				// We never wan't to return missing records.
 				if !record.IsMissingRecord {
-					c.reportDistributedMissingRecord()
 					fresh[id] = record.Value
+				} else {
+					c.reportDistributedMissingRecord()
 				}
 				continue
 			}
