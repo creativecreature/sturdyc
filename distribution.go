@@ -93,10 +93,12 @@ func distributedFetch[V, T any](c *Client[T], key string, fetchFn FetchFn[V]) Fe
 			// Check if the record is fresh enough to not need a refresh.
 			if !c.distributedEarlyRefreshes || c.clock.Since(record.CreatedAt) < c.distributedRefreshAfterDuration {
 				if record.IsMissingRecord {
+					c.reportDistributedMissingRecord()
 					return record.Value, ErrNotFound
 				}
 				return record.Value, nil
 			}
+			c.reportDistributedRefresh()
 			stale, hasStale = record.Value, true
 		}
 
@@ -179,15 +181,20 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 			if !c.distributedEarlyRefreshes || c.clock.Since(record.CreatedAt) < c.distributedRefreshAfterDuration {
 				// We never wan't to return missing records.
 				if !record.IsMissingRecord {
+					c.reportDistributedMissingRecord()
 					fresh[id] = record.Value
 				}
 				continue
 			}
 
 			idsToRefresh = append(idsToRefresh, id)
+			c.reportDistributedRefresh()
+
 			// We never wan't to return missing records.
 			if !record.IsMissingRecord {
 				stale[id] = record.Value
+			} else {
+				c.reportDistributedMissingRecord()
 			}
 		}
 
