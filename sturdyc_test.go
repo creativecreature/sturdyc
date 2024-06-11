@@ -26,6 +26,8 @@ type TestMetricsRecorder struct {
 	sync.Mutex
 	cacheHits       int
 	cacheMisses     int
+	refreshes       int
+	missingRecords  int
 	evictions       int
 	forcedEvictions int
 	evictedEntries  int
@@ -50,6 +52,18 @@ func (r *TestMetricsRecorder) CacheMiss() {
 	r.Lock()
 	defer r.Unlock()
 	r.cacheMisses++
+}
+
+func (r *TestMetricsRecorder) Refresh() {
+	r.Lock()
+	defer r.Unlock()
+	r.refreshes++
+}
+
+func (r *TestMetricsRecorder) MissingRecord() {
+	r.Lock()
+	defer r.Unlock()
+	r.missingRecords++
 }
 
 func (r *TestMetricsRecorder) ObserveCacheSize(_ func() int) {}
