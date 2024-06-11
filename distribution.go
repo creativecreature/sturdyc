@@ -206,7 +206,9 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 		dataSourceResponses, err := fetchFn(ctx, idsToRefresh)
 		// Incase of an error, we'll proceed with the ones we got from the distributed storage.
 		if err != nil {
-			c.reportDistributedStaleFallback()
+			for i := 0; i < len(stale); i++ {
+				c.reportDistributedStaleFallback()
+			}
 			c.log.Error(fmt.Sprintf("sturdyc: error fetching records from the underlying data source. %v", err))
 			maps.Copy(stale, fresh)
 			return stale, nil
