@@ -66,7 +66,7 @@ func (s *shard[T]) forceEvict() {
 	s.reportEntriesEvicted(entriesEvicted)
 }
 
-func (s *shard[T]) get(key string) (val T, exists, ignore, refresh bool) {
+func (s *shard[T]) get(key string) (val T, exists, markedAsMissing, refresh bool) {
 	s.RLock()
 	item, ok := s.entries[key]
 	if !ok {

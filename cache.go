@@ -124,19 +124,22 @@ func (c *Client[T]) getShard(key string) *shard[T] {
 	return c.shards[shardIndex]
 }
 
-func (c *Client[T]) get(key string) (value T, exists, ignore, refresh bool) {
+// getWithState retrieves a single value from the cache and returns additional
+// information about the state of the record. The state includes whether the record
+// exists, if it has been marked as missing, and if it is due for a refresh.
+func (c *Client[T]) getWithState(key string) (value T, exists, markedAsMissing, refresh bool) {
 	shard := c.getShard(key)
-	val, exists, ignore, refresh := shard.get(key)
-	c.reportCacheHits(exists, ignore, refresh)
-	return val, exists, ignore, refresh
+	val, exists, markedAsMissing, refresh := shard.get(key)
+	c.reportCacheHits(exists, markedAsMissing, refresh)
+	return val, exists, markedAsMissing, refresh
 }
 
 // Get retrieves a single value from the cache.
 func (c *Client[T]) Get(key string) (T, bool) {
 	shard := c.getShard(key)
-	val, ok, ignore, refresh := shard.get(key)
-	c.reportCacheHits(ok, ignore, refresh)
-	return val, ok && !ignore
+	val, ok, markedAsMissing, refresh := shard.get(key)
+	c.reportCacheHits(ok, markedAsMissing, refresh)
+	return val, ok && !markedAsMissing
 }
 
 // GetMany retrieves multiple values from the cache.

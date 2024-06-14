@@ -12,14 +12,14 @@ func (c *Client[T]) groupIDs(ids []string, keyFn KeyFn) (hits map[string]T, miss
 
 	for _, id := range ids {
 		key := keyFn(id)
-		value, exists, shouldIgnore, shouldRefresh := c.get(key)
+		value, exists, markedAsMissing, shouldRefresh := c.getWithState(key)
 
 		// Check if the record should be refreshed in the background.
 		if shouldRefresh {
 			refreshes = append(refreshes, id)
 		}
 
-		if shouldIgnore {
+		if markedAsMissing {
 			continue
 		}
 
@@ -37,7 +37,7 @@ func getFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn F
 	wrappedFetch := wrap[T](distributedFetch(c, key, fetchFn))
 
 	// Begin by checking if we have the item in our cache.
-	value, ok, shouldIgnore, shouldRefresh := c.get(key)
+	value, ok, markedAsMissing, shouldRefresh := c.getWithState(key)
 
 	if shouldRefresh {
 		c.safeGo(func() {
@@ -45,7 +45,7 @@ func getFetch[V, T any](ctx context.Context, c *Client[T], key string, fetchFn F
 		})
 	}
 
-	if shouldIgnore {
+	if markedAsMissing {
 		return value, ErrMissingRecord
 	}
 
