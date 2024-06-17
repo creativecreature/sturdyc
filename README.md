@@ -26,96 +26,11 @@ It has all the functionality you would expect from a caching library, but what
 **sets it apart** are the features designed to make I/O heavy applications both
 _robust_ and _highly performant_.
 
-### Adding `sturdyc` to your application:
-
-To illustrate how to integrate this package with your application, we'll use
-the following two methods of an API client as example:
-
-```go
-// Order retrieves a single order by ID.
-func (c *Client) Order(ctx context.Context, id string) (Order, error) {
-	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
-	var response Order
-	err := requests.URL(c.orderURL).
-		Pathf("/order/%s", id).
-		ToJSON(&response).
-		Fetch(timeoutCtx)
-
-	return response, err
-}
-
-// Orders retrieves a batch of orders by their IDs.
-func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, error) {
-	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
-	var response map[string]Order
-	err := requests.URL(c.orderURL).
-		Path("/orders").
-		Param("ids", strings.Join(ids, ",")).
-		ToJSON(&response).
-		Fetch(timeoutCtx)
-
-	return response, err
-}
-```
-
-Now, all we have to do is wrap the fetching part in a function and then hand it
-over to the cache:
-
-```go
-func (c *Client) Order(ctx context.Context, id string) (Order, error) {
-	fetchFunc := func(ctx context.Context) (Order, error) {
-		timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
-		defer cancel()
-
-		var response Order
-		err := requests.URL(c.orderURL).
-			Pathf("/order/%s", id).
-			ToJSON(&response).
-			Fetch(timeoutCtx)
-
-		return response, err
-	}
-
-	return c.cache.GetOrFetch(ctx, "order-"+id, fetchFunc)
-}
-
-func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, error) {
-	fetchFunc := func(ctx context.Context, cacheMisses []string) (map[string]Order, error) {
-		timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
-		defer cancel()
-
-		var response map[string]Order
-		err := requests.URL(c.orderURL).
-			Path("/orders").
-			Param("ids", strings.Join(cacheMisses, ",")).
-			ToJSON(&response).
-			Fetch(timeoutCtx)
-
-		return response, err
-	}
-
-	return c.cache.GetOrFetchBatch(ctx, ids, c.persistentCache.BatchKeyFn("orders"), fetchFunc)
-}
-```
-
-The example above retrieves the data from an HTTP API, but it's just as easy to
-wrap a database query, a remote procedure call, a disk read, or any other I/O
-operation
-
-These three extra lines of code will obviously grant us the ability to serve
-the data from memory, and then retrieve it again once the TTL expires, but the
-cache can do much more. Let's look at that next!
-
-### Benefits:
+### At a glance
 
 #### Deduplication
 
-When we pass our functions for data retrieval to `sturdyc`, it will
-automatically perform _in-flight_ tracking for every key. This also works for
+`sturdyc` performs _in-flight_ tracking for every key. This also works for
 batch operations, where it can deduplicate a batch of cache misses and then
 assemble the response by picking records from multiple in-flight requests.
 
@@ -168,12 +83,94 @@ In addition to this, we've seen our number of outgoing requests decrease by
 more than 90% while still serving data that is refreshed every second. This
 setting is configurable, and you can adjust it to a lower value if you like.
 
+### Adding `sturdyc` to your application:
+
+The API has been designed to make it effortless to add `sturdyc` to your
+application. We'll use the following two methods of an API client as examples:
+
+```go
+// Order retrieves a single order by ID.
+func (c *Client) Order(ctx context.Context, id string) (Order, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	var response Order
+	err := requests.URL(c.orderURL).
+		Pathf("/order/%s", id).
+		ToJSON(&response).
+		Fetch(timeoutCtx)
+
+	return response, err
+}
+
+// Orders retrieves a batch of orders by their IDs.
+func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, error) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	var response map[string]Order
+	err := requests.URL(c.orderURL).
+		Path("/orders").
+		Param("ids", strings.Join(ids, ",")).
+		ToJSON(&response).
+		Fetch(timeoutCtx)
+
+	return response, err
+}
+```
+
+Now, all we have to do is wrap the fetching part in a function and then hand it
+over to our cache client:
+
+```go
+func (c *Client) Order(ctx context.Context, id string) (Order, error) {
+	fetchFunc := func(ctx context.Context) (Order, error) {
+		timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+
+		var response Order
+		err := requests.URL(c.orderURL).
+			Pathf("/order/%s", id).
+			ToJSON(&response).
+			Fetch(timeoutCtx)
+
+		return response, err
+	}
+
+	return c.cache.GetOrFetch(ctx, "order-"+id, fetchFunc)
+}
+
+func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, error) {
+	fetchFunc := func(ctx context.Context, cacheMisses []string) (map[string]Order, error) {
+		timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+
+		var response map[string]Order
+		err := requests.URL(c.orderURL).
+			Path("/orders").
+			Param("ids", strings.Join(cacheMisses, ",")).
+			ToJSON(&response).
+			Fetch(timeoutCtx)
+
+		return response, err
+	}
+
+	return c.cache.GetOrFetchBatch(ctx, ids, c.persistentCache.BatchKeyFn("orders"), fetchFunc)
+}
+```
+
+The example above retrieves the data from an HTTP API, but it's just as easy to
+wrap a database query, a remote procedure call, a disk read, or any other I/O
+operation.
+
+Next, we'll look at how to configure the cache in more detail.
+
 ### Table of contents
 
-There are examples further down this file that covers the entire API, and I
-encourage you to **read these examples in the order they appear**. Most of them
-build on each other, and many share configurations. Here is a brief overview of
-what the examples are going to cover:
+I've included examples that cover the entire API, and I encourage you to **read
+these examples in the order they appear**. Most of them build on each other,
+and many share configurations. Here is a brief overview of what the examples
+are going to cover:
 
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**early refreshes**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#early-refreshes)
@@ -221,7 +218,7 @@ configuration:
 	log.Println(cacheClient.Get("key1"))
 ```
 
-Next, we'll look at some of the more _advanced features_ in detail.
+Next, we'll look at some of the more _advanced features_.
 
 # Stampede protection
 
