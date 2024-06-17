@@ -26,15 +26,15 @@ It has all the functionality you would expect from a caching library, but what
 **sets it apart** are the features designed to make I/O heavy applications both
 _robust_ and _highly performant_.
 
-### At a glance
+# At a glance
 
-#### Deduplication
+### Deduplication
 
 `sturdyc` performs _in-flight_ tracking for every key. This also works for
 batch operations, where it can deduplicate a batch of cache misses and then
 assemble the response by picking records from multiple in-flight requests.
 
-#### Early refreshes
+### Early refreshes
 
 There is also a lot of extra functionality you can enable, one being _early
 refreshes_ which instructs the cache to refresh the keys which are in active
@@ -46,7 +46,7 @@ frequently used data from memory:
 sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, exponentialBackOff)
 ```
 
-#### Batching
+### Batching
 
 When the cache retrieves data from a batchable source, it will disassemble the
 response and then cache each record individually based on the permutations of
@@ -61,7 +61,7 @@ until the `idealBatchSize` is reached or the `batchBufferTimeout` expires:
 sturdyc.WithRefreshCoalescing(idealBatchSize, batchBufferTimeout)
 ```
 
-#### Distributed key-value store
+### Distributed key-value store
 
 You can also configure `sturdyc` to synchronize its in-memory cache with a
 **distributed key-value store** of your choosing:
@@ -70,7 +70,7 @@ You can also configure `sturdyc` to synchronize its in-memory cache with a
 sturdyc.WithDistributedStorage(storage),
 ```
 
-#### Latency improvements
+### Latency improvements
 
 Below is a screenshot showing the latency improvements we've observed after
 replacing our old cache with this package:
@@ -83,7 +83,7 @@ In addition to this, we've seen our number of outgoing requests decrease by
 more than 90% while still serving data that is refreshed every second. This
 setting is configurable, and you can adjust it to a lower value if you like.
 
-### Adding `sturdyc` to your application:
+# Adding `sturdyc` to your application:
 
 The API has been designed to make it effortless to add `sturdyc` to your
 application. We'll use the following two methods of an API client as examples:
@@ -165,7 +165,7 @@ operation.
 
 Next, we'll look at how to configure the cache in more detail.
 
-### Table of contents
+# Table of contents
 
 I've included examples that cover the entire API, and I encourage you to **read
 these examples in the order they appear**. Most of them build on each other,
