@@ -159,7 +159,7 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 	}
 
 	return func(ctx context.Context, ids []string) (map[string]V, error) {
-		// We need to be able to lookup the ID of the record based on the key.
+		// We need to be able to look up the ID of the record based on the key.
 		keyIDMap := make(map[string]string, len(ids))
 		keys := make([]string, 0, len(ids))
 		for _, id := range ids {
@@ -193,7 +193,7 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 
 			// If distributedStaleStorage isn't enabled it means all records are fresh, otherwise checked the CreatedAt time.
 			if !c.distributedEarlyRefreshes || c.clock.Since(record.CreatedAt) < c.distributedRefreshAfterDuration {
-				// We never wan't to return missing records.
+				// We never want to return missing records.
 				if !record.IsMissingRecord {
 					fresh[id] = record.Value
 				} else {
@@ -205,7 +205,7 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 			idsToRefresh = append(idsToRefresh, id)
 			c.reportDistributedRefresh()
 
-			// We never wan't to return missing records.
+			// We never want to return missing records.
 			if !record.IsMissingRecord {
 				stale[id] = record.Value
 			} else {
@@ -218,7 +218,7 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 		}
 
 		dataSourceResponses, err := fetchFn(ctx, idsToRefresh)
-		// Incase of an error, we'll proceed with the ones we got from the distributed storage.
+		// In case of an error, we'll proceed with the ones we got from the distributed storage.
 		if err != nil {
 			for i := 0; i < len(stale); i++ {
 				c.reportDistributedStaleFallback()
