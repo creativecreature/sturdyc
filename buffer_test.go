@@ -287,9 +287,9 @@ func TestBatchesAreGroupedByPermutations(t *testing.T) {
 
 	fetchObserver := NewFetchObserver(1)
 	fetchObserver.BatchResponse(seedIDs)
-	sturdyc.GetOrFetchBatch(ctx, c, seedIDs, c.PermutatedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, seedIDs, c.PermutedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
-	sturdyc.GetOrFetchBatch(ctx, c, seedIDs, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, seedIDs, c.PermutedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 2)
 	fetchObserver.Clear()
@@ -308,12 +308,12 @@ func TestBatchesAreGroupedByPermutations(t *testing.T) {
 	optsTwoBatch2 := []string{"6", "7", "8"}
 
 	// Request the first batch of records. This should wait for additional IDs.
-	sturdyc.GetOrFetchBatch(ctx, c, optsOneIDs, c.PermutatedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, optsOneIDs, c.PermutedBatchKeyFn(prefix, optsOne), fetchObserver.FetchBatch)
 
 	// Next, we're requesting ids 4-8 with the second options which should exceed the buffer size for that permutation.
 	fetchObserver.BatchResponse([]string{"4", "5", "6", "7", "8"})
-	sturdyc.GetOrFetchBatch(ctx, c, optsTwoBatch1, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
-	sturdyc.GetOrFetchBatch(ctx, c, optsTwoBatch2, c.PermutatedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, optsTwoBatch1, c.PermutedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
+	sturdyc.GetOrFetchBatch(ctx, c, optsTwoBatch2, c.PermutedBatchKeyFn(prefix, optsTwo), fetchObserver.FetchBatch)
 
 	<-fetchObserver.FetchCompleted
 	fetchObserver.AssertFetchCount(t, 3)

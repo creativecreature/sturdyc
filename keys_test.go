@@ -40,7 +40,7 @@ func TestTimeBasedKeys(t *testing.T) {
 	}
 
 	epochString := strconv.FormatInt(timeValue.Unix(), 10)
-	keyOne := regularTimeClient.PermutatedKey("keyPrefix", opts{timeValue})
+	keyOne := regularTimeClient.PermutedKey("keyPrefix", opts{timeValue})
 	if keyOne != "keyPrefix-"+epochString {
 		t.Errorf("got: %s wanted: %s", keyOne, "keyPrefix-"+epochString)
 	}
@@ -48,7 +48,7 @@ func TestTimeBasedKeys(t *testing.T) {
 	// Adding 1 minute and 10 seconds to the time. No truncation should occur.
 	secondTimeValue := clientSecondClock.Now()
 	clientSecondClock.Add(time.Second * 70)
-	secondKey := relativeTimeClientSecond.PermutatedKey("keyPrefix", opts{secondTimeValue})
+	secondKey := relativeTimeClientSecond.PermutedKey("keyPrefix", opts{secondTimeValue})
 	wantSecondKey := "keyPrefix-(-)0h01m10s"
 	if secondKey != wantSecondKey {
 		t.Errorf("got: %s wanted: %s", secondKey, wantSecondKey)
@@ -57,7 +57,7 @@ func TestTimeBasedKeys(t *testing.T) {
 	// Adding 1h, 1 minute and 10 seconds to the time. The seconds should be truncated.
 	minuteTimeValue := clientMinuteClock.Now()
 	clientMinuteClock.Add(time.Hour + time.Minute + (time.Second * 10))
-	minuteKey := relativeTimeClientMinute.PermutatedKey("keyPrefix", opts{minuteTimeValue})
+	minuteKey := relativeTimeClientMinute.PermutedKey("keyPrefix", opts{minuteTimeValue})
 	wantMinuteKey := "keyPrefix-(-)1h01m00s"
 	if minuteKey != wantMinuteKey {
 		t.Errorf("got: %s wanted: %s", minuteKey, wantMinuteKey)
@@ -66,14 +66,14 @@ func TestTimeBasedKeys(t *testing.T) {
 	// Adding 72h to the time. The minutes and seconds should be truncated.
 	hourTimeValue := clientHourClock.Now()
 	clientHourClock.Add((72 * time.Hour) + time.Minute + time.Second)
-	hourKey := relativeTimeClientHour.PermutatedKey("keyPrefix", opts{hourTimeValue})
+	hourKey := relativeTimeClientHour.PermutedKey("keyPrefix", opts{hourTimeValue})
 	wantHourKey := "keyPrefix-(-)72h00m00s"
 	if hourKey != wantHourKey {
 		t.Errorf("got: %s wanted: %s", hourKey, wantHourKey)
 	}
 }
 
-func TestPermutatedRelativeTimeKeys(t *testing.T) {
+func TestPermutedTimeKeys(t *testing.T) {
 	t.Parallel()
 
 	c := sturdyc.New[any](100, 1, time.Hour, 5,
@@ -139,14 +139,14 @@ func TestPermutatedRelativeTimeKeys(t *testing.T) {
 
 	//nolint:lll // This is a test case, we want to keep the line length.
 	want := "cache-key-string-string-nil-1-1-nil-string1,string2-nil-string1,string2-nil-1,2-nil-1,2-nil-true-true-nil-(-)1h00m00s-(+)1h30m00s-nil"
-	got := c.PermutatedKey(prefix, queryOne)
+	got := c.PermutedKey(prefix, queryOne)
 
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)
 	}
 }
 
-func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
+func TestPermutedKeyHandlesEmptySlices(t *testing.T) {
 	t.Parallel()
 
 	c := sturdyc.New[any](100, 1, time.Hour, 5,
@@ -162,14 +162,14 @@ func TestPermutatedKeyHandlesEmptySlices(t *testing.T) {
 	}
 
 	want := "cache-key-empty-empty"
-	got := c.PermutatedKey("cache-key", params)
+	got := c.PermutedKey("cache-key", params)
 
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)
 	}
 }
 
-func TestPermutatedBatchKeyFn(t *testing.T) {
+func TestPermutedBatchKeyFn(t *testing.T) {
 	t.Parallel()
 
 	c := sturdyc.New[any](100, 1, time.Hour, 5,
@@ -181,7 +181,7 @@ func TestPermutatedBatchKeyFn(t *testing.T) {
 		limit int
 	}
 
-	cacheKeyFunc := c.PermutatedBatchKeyFn("cache-key", queryParams{
+	cacheKeyFunc := c.PermutedBatchKeyFn("cache-key", queryParams{
 		IncludeUpcoming: true,
 		limit:           2,
 	})
@@ -202,20 +202,20 @@ func TestTimePointers(t *testing.T) {
 	)
 
 	now := time.Now().Truncate(time.Hour)
-	got := cache.PermutatedKey("key", opts{Time: &now})
+	got := cache.PermutedKey("key", opts{Time: &now})
 	want := "key-" + strconv.Itoa(int(now.Unix()))
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)
 	}
 
-	got = cache.PermutatedKey("key", opts{Time: nil})
+	got = cache.PermutedKey("key", opts{Time: nil})
 	want = "key-nil"
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)
 	}
 
 	empty := time.Time{}
-	got = cache.PermutatedKey("key", opts{Time: &empty})
+	got = cache.PermutedKey("key", opts{Time: &empty})
 	want = "key-empty-time"
 	if got != want {
 		t.Errorf("got: %s wanted: %s", got, want)

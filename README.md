@@ -910,7 +910,7 @@ func NewOrderAPI(c *sturdyc.Client[string]) *OrderAPI {
 func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOptions) (map[string]string, error) {
 	// We use the PermutedBatchKeyFn when an ID isn't enough to uniquely identify a
 	// record. The cache is going to store each id once per set of options.
-	cacheKeyFn := a.PermutatedBatchKeyFn("key", opts)
+	cacheKeyFn := a.PermutedBatchKeyFn("key", opts)
 
 	// We'll create a fetchFn with a closure that captures the options. For this
 	// simple example, it logs and returns the status for each order, but you could
@@ -928,7 +928,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 ```
 
 The main difference from the previous example is that we're using
-`PermutatedBatchKeyFn` instead of `BatchKeyFn`. Internally, the cache will use
+`PermutedBatchKeyFn` instead of `BatchKeyFn`. Internally, the cache will use
 reflection to extract the names and values of every **exported** field in the
 `opts` struct, and then include them when it constructs the cache keys.
 

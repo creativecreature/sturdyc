@@ -26,7 +26,7 @@ func (a *OrderAPI) OrderStatus(ctx context.Context, ids []string, opts OrderOpti
 	// We use the  PermutedBatchKeyFn when an ID isn't enough to uniquely identify a
 	// record. The cache is going to store each id once per set of options. In a more
 	// realistic scenario, the opts would be query params or arguments to a DB query.
-	cacheKeyFn := a.PermutatedBatchKeyFn("key", opts)
+	cacheKeyFn := a.PermutedBatchKeyFn("key", opts)
 
 	// We'll create a fetchFn with a closure that captures the options. For this
 	// simple example, it logs and returns the status for each order, but you could

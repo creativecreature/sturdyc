@@ -56,7 +56,7 @@ type options struct {
 }
 
 func (c *apiClient) GetShippingOptions(ctx context.Context, containerIndex int, ids []string, sortOrder string) (map[string][]string, error) {
-	cacheKeyFn := c.cache.PermutatedBatchKeyFn("shipping-options", options{sortOrder})
+	cacheKeyFn := c.cache.PermutedBatchKeyFn("shipping-options", options{sortOrder})
 	fetchFn := func(_ context.Context, ids []string) (map[string][]string, error) {
 		response := make(map[string][]string, len(ids))
 

@@ -54,7 +54,7 @@ type options struct {
 }
 
 func (c *apiClient) GetShippingOptions(ctx context.Context, id string, sortOrder string) ([]string, error) {
-	cacheKey := c.cache.PermutatedKey("shipping-options", options{ID: id, SortOrder: sortOrder})
+	cacheKey := c.cache.PermutedKey("shipping-options", options{ID: id, SortOrder: sortOrder})
 	fetchFn := func(_ context.Context) ([]string, error) {
 		log.Println("Fetching shipping options from the underlying data source")
 		return []string{"standard", "express", "next-day"}, nil

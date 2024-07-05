@@ -76,14 +76,14 @@ func (c *Client[T]) handleTime(v reflect.Value) string {
 	return "empty-time"
 }
 
-// Permutated key takes a prefix, and a struct where the fields are
-// concatenated with in order to make a unique cache key. Passing
-// anything but a struct for "permutationStruct" will result in a panic.
+// PermutedKey takes a prefix and a struct where the fields are
+// concatenated to make a unique cache key. Passing anything but
+// a struct for "permutationStruct" will result in a panic.
 //
 // The cache will only use the EXPORTED fields of the struct to construct the key.
 // The permutation struct should be FLAT, with no nested structs. The fields can
 // be any of the basic types, as well as slices and time.Time values.
-func (c *Client[T]) PermutatedKey(prefix string, permutationStruct interface{}) string {
+func (c *Client[T]) PermutedKey(prefix string, permutationStruct interface{}) string {
 	var sb strings.Builder
 	sb.WriteString(prefix)
 	sb.WriteString("-")
@@ -156,7 +156,7 @@ func (c *Client[T]) BatchKeyFn(prefix string) KeyFn {
 	}
 }
 
-// PermutatedBatchKeyFn provides a function that can be used in conjunction
+// PermutedBatchKeyFn provides a function that can be used in conjunction
 // with GetOrFetchBatch. It takes a prefix, and a struct where the fields are
 // concatenated with the id in order to make a unique cache key. Passing
 // anything but a struct for "permutationStruct" will result in a panic.
@@ -164,9 +164,9 @@ func (c *Client[T]) BatchKeyFn(prefix string) KeyFn {
 // The cache will only use the EXPORTED fields of the struct to construct the key.
 // The permutation struct should be FLAT, with no nested structs. The fields can
 // be any of the basic types, as well as slices and time.Time values.
-func (c *Client[T]) PermutatedBatchKeyFn(prefix string, permutationStruct interface{}) KeyFn {
+func (c *Client[T]) PermutedBatchKeyFn(prefix string, permutationStruct interface{}) KeyFn {
 	return func(id string) string {
-		key := c.PermutatedKey(prefix, permutationStruct)
+		key := c.PermutedKey(prefix, permutationStruct)
 		return fmt.Sprintf("%s-ID-%s", key, id)
 	}
 }
