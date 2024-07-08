@@ -36,7 +36,7 @@ linters:
     - asciicheck # checks that your code does not contain non-ASCII identifiers
     - bidichk # checks for dangerous unicode character sequences
     - bodyclose # checks whether HTTP response body is closed successfully
-    # - cyclop # checks function and package cyclomatic complexity
+    - cyclop # checks function and package cyclomatic complexity
     - dupl # tool for code clone detection
     - durationcheck # checks for two durations multiplied together
     - errname # checks that sentinel errors are prefixed with the Err and error types are suffixed with the Error
@@ -46,7 +46,6 @@ linters:
     - forbidigo # forbids identifiers
     - funlen # tool for detection of long functions
     - gocheckcompilerdirectives # validates go compiler directive comments (//go:)
-    # - gochecknoglobals # checks that no global variables exist
     - gochecknoinits # checks that no init functions are present in Go code
     - gochecksumtype # checks exhaustiveness on Go "sum types"
     - gocognit # computes and checks the cognitive complexity of functions
@@ -114,7 +113,7 @@ linters:
 
     ## disabled
     # - lll # reports long lines
-    # - exhaustruct # [highly recommend to enable] checks if all structure fields are initialized
+    # - exhaustruct # [highly recommend to enable] checks if all structure fields are initializedgolangci
     #- depguard # [replaced by gomodguard] checks if package imports are in a list of acceptable packages
     #- dupword # [useless without config] checks for duplicate words in the source code
     #- errchkjson # [don't see profit + I'm against of omitting errors like in the first example https://github.com/breml/errchkjson] checks types passed to the json encoding functions. Reports unsupported types and optionally reports occasions, where the check for the returned error can be omitted
@@ -162,33 +161,9 @@ linters-settings:
   nlreturn:
     block-size: 8
 
-  exhaustruct:
-    # Default: []
-    exclude:
-      - ".*_test.go$"
-      # std libs
-      - "^net/http.Client$"
-      - "^net/http.Cookie$"
-      - "^net/http.Request$"
-      - "^net/http.Response$"
-      - "^net/http.Server$"
-      - "^net/http.Transport$"
-      - "^net/url.URL$"
-      - "^os/exec.Cmd$"
-      - "^reflect.StructField$"
-      # public libs
-      - "^github.com/Shopify/sarama.Config$"
-      - "^github.com/Shopify/sarama.ProducerMessage$"
-      - "^github.com/mitchellh/mapstructure.DecoderConfig$"
-      - "^github.com/prometheus/client_golang/.+Opts$"
-      - "^github.com/spf13/cobra.Command$"
-      - "^github.com/spf13/cobra.CompletionOptions$"
-      - "^github.com/stretchr/testify/mock.Mock$"
-      - "^github.com/testcontainers/testcontainers-go.+Request$"
-      - "^github.com/testcontainers/testcontainers-go.FromDockerfile$"
-      - "^golang.org/x/tools/go/analysis.Analyzer$"
-      - "^google.golang.org/protobuf/.+Options$"
-      - "^gopkg.in/yaml.v3.Node$"
+  gosec:
+    excludes:
+      - G404 # Ignore insecure random number source.
 
   funlen:
     # Checks the number of lines in a function.
@@ -294,9 +269,6 @@ issues:
   exclude-dirs-use-default: false
 
   exclude-rules:
-    - text: "G404:" # Ignore insecure random number source.
-      linters:
-        - gosec
     - source: "(noinspection|TODO)"
       linters: [godot]
     - source: "//noinspection"

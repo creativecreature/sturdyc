@@ -41,7 +41,25 @@ func (c *Client[T]) PassthroughBatch(ctx context.Context, ids []string, keyFn Ke
 	return res, err
 }
 
-// Passthrough is a convenience function that performs type assertion on the result of client.PassthroughBatch.
+// Passthrough is a convenience function that performs type assertion on the
+// result of client.PassthroughBatch.
+//
+// Parameters:
+//
+//	ctx - the context to be used for the request.
+//	c - the cache client.
+//	ids - the list of ids to be fetched.
+//	keyFn - used to generate the cache key for each id.
+//	fetchFn - used to retrieve the data from the underlying data source.
+//
+// Returns:
+//
+//	A map of ids to their corresponding values and an error if one occurred.
+//
+// Type Parameters:
+//
+//	V - The type returned by the fetchFn. Must be assignable to T.
+//	T - The type stored in the cache.
 func PassthroughBatch[V, T any](ctx context.Context, c *Client[T], ids []string, keyFn KeyFn, fetchFn BatchFetchFn[V]) (map[string]V, error) {
 	res, err := c.PassthroughBatch(ctx, ids, keyFn, wrapBatch[T](fetchFn))
 	return unwrapBatch[V](res, err)

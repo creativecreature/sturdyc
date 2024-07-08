@@ -106,7 +106,8 @@ func (s *shard[T]) get(key string) (val T, exists, markedAsMissing, refresh bool
 	return item.value, true, item.isMissingRecord, false
 }
 
-// set sets a key-value pair in the shard. Returns true if it triggered an eviction.
+// set writes a key-value pair to the shard and returns a
+// boolean indicating whether an eviction was performed.
 func (s *shard[T]) set(key string, value T, isMissingRecord bool) bool {
 	s.Lock()
 	defer s.Unlock()
@@ -147,12 +148,14 @@ func (s *shard[T]) set(key string, value T, isMissingRecord bool) bool {
 	return evict
 }
 
+// delete removes a key from the shard.
 func (s *shard[T]) delete(key string) {
 	s.Lock()
 	defer s.Unlock()
 	delete(s.entries, key)
 }
 
+// keys returns all non-expired keys in the shard.
 func (s *shard[T]) keys() []string {
 	s.RLock()
 	defer s.RUnlock()
