@@ -7,24 +7,27 @@
 [![Test](https://github.com/creativecreature/sturdyc/actions/workflows/main.yml/badge.svg)](https://github.com/creativecreature/sturdyc/actions/workflows/main.yml)
 [![codecov](https://codecov.io/gh/creativecreature/sturdyc/graph/badge.svg?token=CYSKW3Z7E6)](https://codecov.io/gh/creativecreature/sturdyc)
 
-`Sturdyc` is a highly concurrent cache that supports **non-blocking reads** and has
-a configurable number of shards that makes it possible to achieve writes
-**without any lock contention**.
+`Sturdyc` is a highly concurrent cache that supports **non-blocking reads** and
+has a configurable number of shards that makes it possible to achieve writes
+**without any lock contention**. The
+[xxhash](https://github.com/cespare/xxhash) algorithm is used for efficient key
+distribution.
 
-The [xxhash](https://github.com/cespare/xxhash) algorithm is used for efficient
-key distribution.
-
-The cache performs continuous evictions of each shard. There are options to
-both disable this functionality and tweak the interval. When you create a
-cache client, you get to decide the percentage of records to evict if the
-capacity is reached.
-
-All evictions are performed per shard based on recency, with an _O(N) time
-complexity_, using [quickselect](https://en.wikipedia.org/wiki/Quickselect).
+The cache continuously evicts expired records from each shard. However, there
+are options to tweak the interval and disable this functionality if you prefer
+to only evict records if the capacity is reached. All evictions are performed
+per shard based on recency, with an _O(N) time complexity_, using
+[quickselect](https://en.wikipedia.org/wiki/Quickselect).
 
 It has all the functionality you would expect from a caching library, but what
 **sets it apart** are the features designed to make I/O heavy applications both
 _robust_ and _highly performant_.
+
+# Installing
+
+```sh
+go get github.com/creativecreature/sturdyc
+```
 
 # At a glance
 
@@ -52,10 +55,10 @@ When the cache retrieves data from a batchable source, it will disassemble the
 response and then cache each record individually based on the permutations of
 the options with which it was fetched.
 
-We can leverage this fact to **significantly reduce** our application's
-outgoing requests to these data sources by enabling _refresh coalescing_.
-Internally, `sturdyc` creates a buffer for each option set and gathers IDs
-until the `idealBatchSize` is reached or the `batchBufferTimeout` expires:
+This can be used to **significantly reduce** the application's outgoing
+requests by also enabling _refresh coalescing_. Internally, `sturdyc`
+creates a buffer for each unique option set and gathers IDs until the
+`idealBatchSize` is reached or the `batchBufferTimeout` expires:
 
 ```go
 sturdyc.WithRefreshCoalescing(idealBatchSize, batchBufferTimeout)
@@ -80,12 +83,11 @@ replacing our old cache with this package:
 &nbsp;
 
 In addition to this, we've seen our number of outgoing requests decrease by
-more than 90% while still serving data that is refreshed every second. This
-setting is configurable, and you can adjust it to a lower value if you like.
+more than 90%.
 
 # Adding `sturdyc` to your application:
 
-The API has been designed to make it effortless to add `sturdyc` to your
+The API has been designed to make it effortless to add `sturdyc` to an existing
 application. We'll use the following two methods of an API client as examples:
 
 ```go
@@ -119,7 +121,7 @@ func (c *Client) Orders(ctx context.Context, ids []string) (map[string]Order, er
 }
 ```
 
-Now, all we have to do is wrap the fetching part in a function and then hand it
+All we have to do is wrap the fetching part in a function, and then hand it
 over to our cache client:
 
 ```go
@@ -172,6 +174,7 @@ these examples in the order they appear**. Most of them build on each other,
 and many share configurations. Here is a brief overview of what the examples
 are going to cover:
 
+- [**creating a cache client**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#creating-a-cache-client)
 - [**stampede protection**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#stampede-protection)
 - [**early refreshes**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#early-refreshes)
 - [**caching non-existent records**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#non-existent-records)
@@ -183,13 +186,7 @@ are going to cover:
 - [**custom metrics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#custom-metrics)
 - [**generics**](https://github.com/creativecreature/sturdyc?tab=readme-ov-file#generics)
 
-# Installing
-
-```sh
-go get github.com/creativecreature/sturdyc
-```
-
-# Getting started
+# Creating a cache client
 
 The first thing you will have to do is to create a cache client to hold your
 configuration:
