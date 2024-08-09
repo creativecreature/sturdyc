@@ -671,7 +671,7 @@ func (a *API) Get(ctx context.Context, key string) (string, error) {
 			return "value", nil
 		}
 		// This error tells the cache that the data does not exist at the source.
-		return "", sturdyc.ErrStoreMissingRecord
+		return "", sturdyc.ErrNotFound
 	}
 	return a.GetOrFetch(ctx, key, fetchFn)
 }
