@@ -92,7 +92,7 @@ replacing our old cache with this package:
 &nbsp;
 
 In addition to this, we've seen our number of outgoing requests decrease by
-more than 90%.
+more than 90% after enabling refresh coalescing.
 
 # Adding `sturdyc` to your application:
 
