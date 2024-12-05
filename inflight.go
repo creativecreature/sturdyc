@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -105,8 +106,16 @@ func makeBatchCall[T, V any](ctx context.Context, c *Client[T], opts makeBatchCa
 
 	// Check if we should store any of these IDs as a missing record.
 	if c.storeMissingRecords && len(response) < len(opts.ids) {
+		responseIDs := make([]string, 0, len(response))
+		for id := range response {
+			responseIDs = append(responseIDs, id)
+		}
 		for _, id := range opts.ids {
 			if _, ok := response[id]; !ok {
+				c.log.Warn(fmt.Sprintf(
+					"storing %s as missing after a batch call. Requested ids: %s. Received ids: %s",
+					id, strings.Join(opts.ids, ","), strings.Join(responseIDs, ","),
+				))
 				c.StoreMissingRecord(opts.keyFn(id))
 			}
 		}

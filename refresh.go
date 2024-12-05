@@ -3,6 +3,8 @@ package sturdyc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 )
 
 func (c *Client[T]) refresh(key string, fetchFn FetchFn[T]) {
@@ -27,6 +29,10 @@ func (c *Client[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn
 	}
 
 	// Check if any of the records have been deleted at the data source.
+	responseIDs := make([]string, 0, len(response))
+	for id := range response {
+		responseIDs = append(responseIDs, id)
+	}
 	for _, id := range ids {
 		_, okCache, _, _ := c.getWithState(keyFn(id))
 		_, okResponse := response[id]
@@ -40,6 +46,10 @@ func (c *Client[T]) refreshBatch(ids []string, keyFn KeyFn, fetchFn BatchFetchFn
 		}
 
 		if c.storeMissingRecords && !okResponse {
+			c.log.Warn(fmt.Sprintf(
+				"storing %s as missing after a refresh. Requested ids: %s. Received ids: %s",
+				id, strings.Join(ids, ","), strings.Join(responseIDs, ","),
+			))
 			c.StoreMissingRecord(keyFn(id))
 		}
 	}
