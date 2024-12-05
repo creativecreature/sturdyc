@@ -98,13 +98,17 @@ type makeBatchCallOpts[T, V any] struct {
 
 func makeBatchCall[T, V any](ctx context.Context, c *Client[T], opts makeBatchCallOpts[T, V]) {
 	response, err := opts.fn(ctx, opts.ids)
-	if err != nil {
+	if err != nil && !errors.Is(err, errOnlyDistributedRecords) {
 		opts.call.err = err
 		return
 	}
 
-	// Check if we should store any of these IDs as a missing record.
-	if c.storeMissingRecords && len(response) < len(opts.ids) {
+	// Check if we should store any of these IDs as a missing record. However, we
+	// don't want to do this if we only received records from the distributed
+	// storage. That means that the underlying data source errored for the ID's
+	// that we didn't have in our distributed storage, and we don't know wether
+	// these records are missing or not.
+	if c.storeMissingRecords && len(response) < len(opts.ids) && !errors.Is(err, errOnlyDistributedRecords) {
 		for _, id := range opts.ids {
 			if _, ok := response[id]; !ok {
 				c.StoreMissingRecord(opts.keyFn(id))
@@ -153,12 +157,7 @@ func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], opts callBat
 				}
 				c.endBatchFlight(uniqueIDs, opts.keyFn, call)
 			}()
-			batchCallOpts := makeBatchCallOpts[T, V]{
-				ids:   uniqueIDs,
-				fn:    opts.fn,
-				keyFn: opts.keyFn,
-				call:  call,
-			}
+			batchCallOpts := makeBatchCallOpts[T, V]{ids: uniqueIDs, fn: opts.fn, keyFn: opts.keyFn, call: call}
 			makeBatchCall(ctx, c, batchCallOpts)
 		}()
 	}

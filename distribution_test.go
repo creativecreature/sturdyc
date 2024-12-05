@@ -696,3 +696,72 @@ func TestDistributedStorageBatchConvertsToMissingRecord(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	fetchObserver.AssertFetchCount(t, 3)
 }
+
+func TestDistributedStorageDoesNotCachePartialResponseAsMissingRecords(t *testing.T) {
+	t.Parallel()
+
+	refreshAfter := time.Minute
+	clock := sturdyc.NewTestClock(time.Now())
+	ctx := context.Background()
+	ttl := time.Second * 30
+	distributedStorage := &mockStorage{}
+	c := sturdyc.New[string](1000, 10, ttl, 30,
+		sturdyc.WithNoContinuousEvictions(),
+		sturdyc.WithClock(clock),
+		sturdyc.WithMissingRecordStorage(),
+		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, refreshAfter),
+	)
+	fetchObserver := NewFetchObserver(1)
+
+	keyFn := c.BatchKeyFn("item")
+	batchOfIDs := []string{"1", "2", "3"}
+	fetchObserver.BatchResponse(batchOfIDs)
+	_, err := sturdyc.GetOrFetchBatch(ctx, c, batchOfIDs, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertRequestedRecords(t, batchOfIDs)
+	fetchObserver.AssertFetchCount(t, 1)
+	fetchObserver.Clear()
+
+	// The keys are written asynchonously to the distributed storage.
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
+
+	// Next, we'll delete the records from the in-memory cache to simulate that they were evicted.
+	for _, id := range batchOfIDs {
+		c.Delete(keyFn(id))
+	}
+	if c.Size() != 0 {
+		t.Fatalf("expected cache size to be 0, got %d", c.Size())
+	}
+
+	// Now we'll want to go past the stale time, and setup the fetch observer so
+	// that it errors. We should still be able to retrieve the records that we have
+	// in the distributed cache, and the remaining ID that we're going to add to the
+	// batch should not be stored as a missing record.
+	clock.Add(refreshAfter + 1)
+	fetchObserver.Err(errors.New("boom"))
+	res, err := sturdyc.GetOrFetchBatch(ctx, c, []string{"1", "2", "3", "4"}, keyFn, fetchObserver.FetchBatch)
+	// Assert that the records are still present in our distributed storage.
+	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(res) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(res))
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertRequestedRecords(t, []string{"1", "2", "3", "4"})
+	fetchObserver.AssertFetchCount(t, 2)
+	fetchObserver.Clear()
+
+	if c.Size() != 3 {
+		t.Fatalf("expected 3 records, got %d", c.Size())
+	}
+}
