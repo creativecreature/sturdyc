@@ -155,7 +155,7 @@ func TestDistributedStorage(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 	fetchObserver.Clear()
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecord(t, key)
 	distributedStorage.assertGetCount(t, 1)
@@ -176,7 +176,7 @@ func TestDistributedStorage(t *testing.T) {
 		t.Errorf("expected valuekey1, got %s", res)
 	}
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	fetchObserver.AssertFetchCount(t, 1)
 	distributedStorage.assertGetCount(t, 2)
@@ -410,7 +410,7 @@ func TestDistributedStorageBatch(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 	fetchObserver.Clear()
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, firstBatchOfIDs, keyFn)
 	distributedStorage.assertGetCount(t, 1)
@@ -443,7 +443,7 @@ func TestDistributedStorageBatch(t *testing.T) {
 	fetchObserver.AssertRequestedRecords(t, []string{"4", "5", "6"})
 	fetchObserver.AssertFetchCount(t, 2)
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, secondBatchOfIDs, keyFn)
 	distributedStorage.assertGetCount(t, 2)
@@ -479,7 +479,7 @@ func TestDistributedStaleStorageBatch(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 	fetchObserver.Clear()
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, firstBatchOfIDs, keyFn)
 	distributedStorage.assertGetCount(t, 1)
@@ -545,7 +545,7 @@ func TestDistributedStorageBatchDeletes(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 	fetchObserver.Clear()
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
 	distributedStorage.assertGetCount(t, 1)
@@ -577,7 +577,7 @@ func TestDistributedStorageBatchDeletes(t *testing.T) {
 	fetchObserver.AssertRequestedRecords(t, batchOfIDs)
 	fetchObserver.AssertFetchCount(t, 2)
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, []string{"1", "2"}, keyFn)
 	distributedStorage.assertGetCount(t, 2)
@@ -585,7 +585,7 @@ func TestDistributedStorageBatchDeletes(t *testing.T) {
 	distributedStorage.assertDeleteCount(t, 1)
 }
 
-func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
+func TestDistributedStorageBatchConvertsToMissingRecord(t *testing.T) {
 	t.Parallel()
 
 	staleDuration := time.Minute
@@ -614,7 +614,7 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 1)
 	fetchObserver.Clear()
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
 	distributedStorage.assertGetCount(t, 1)
@@ -647,7 +647,7 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	fetchObserver.AssertFetchCount(t, 2)
 	fetchObserver.Clear()
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, []string{"1", "2"}, keyFn)
 	distributedStorage.assertGetCount(t, 2)
@@ -674,14 +674,14 @@ func TestDistributedStorageBatchConverstToMissingRecord(t *testing.T) {
 	fetchObserver.AssertRequestedRecords(t, batchOfIDs)
 	fetchObserver.AssertFetchCount(t, 3)
 
-	// The keys are written asynchonously, to the distributed storage.
+	// The keys are written asynchonously to the distributed storage.
 	time.Sleep(100 * time.Millisecond)
 	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
 	distributedStorage.assertGetCount(t, 3)
 	distributedStorage.assertSetCount(t, 3)
 	distributedStorage.assertDeleteCount(t, 0)
 
-	// Make sure we get it from the distributed cache.
+	// Delete the ids to make sure that we get them from the distributed cache.
 	for _, id := range batchOfIDs {
 		c.Delete(keyFn(id))
 	}
