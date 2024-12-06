@@ -499,8 +499,8 @@ func TestDistributedStaleStorageBatch(t *testing.T) {
 	fetchObserver.Err(errors.New("error"))
 
 	res, err := sturdyc.GetOrFetchBatch(ctx, c, firstBatchOfIDs, keyFn, fetchObserver.FetchBatch)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	if !errors.Is(err, sturdyc.ErrOnlyCachedRecords) {
+		t.Fatalf("expected ErrOnlyCachedRecords, got %v", err)
 	}
 	for id, value := range res {
 		if value != "value"+id {
@@ -748,8 +748,8 @@ func TestDistributedStorageDoesNotCachePartialResponseAsMissingRecords(t *testin
 	secondBatchOfIDs := []string{"1", "2", "3", "4"}
 	fetchObserver.Err(errors.New("boom"))
 	res, err := sturdyc.GetOrFetchBatch(ctx, c, secondBatchOfIDs, keyFn, fetchObserver.FetchBatch)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	if !errors.Is(err, sturdyc.ErrOnlyCachedRecords) {
+		t.Fatalf("expected ErrOnlyCachedRecords, got %v", err)
 	}
 	if len(res) != 3 {
 		t.Fatalf("expected 3 records, got %d", len(res))
@@ -842,8 +842,8 @@ func TestPartialResponseForRefreshesDoesNotResultInMissingRecords(t *testing.T) 
 		secondBatchOfIDs = append(secondBatchOfIDs, strconv.Itoa(i))
 	}
 	res, err = sturdyc.GetOrFetchBatch(ctx, c, secondBatchOfIDs, keyFn, fetchObserver.FetchBatch)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	if !errors.Is(err, sturdyc.ErrOnlyCachedRecords) {
+		t.Fatalf("expected ErrOnlyCachedRecords, got %v", err)
 	}
 	if len(res) != 100 {
 		t.Fatalf("expected 100 records, got %d", len(res))

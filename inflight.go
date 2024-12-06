@@ -103,6 +103,10 @@ func makeBatchCall[T, V any](ctx context.Context, c *Client[T], opts makeBatchCa
 		return
 	}
 
+	if errors.Is(err, errOnlyDistributedRecords) {
+		opts.call.err = ErrOnlyCachedRecords
+	}
+
 	// Check if we should store any of these IDs as a missing record. However, we
 	// don't want to do this if we only received records from the distributed
 	// storage. That means that the underlying data source errored for the ID's
@@ -163,11 +167,18 @@ func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], opts callBat
 	}
 	c.inFlightBatchMutex.Unlock()
 
+	var err error
 	response := make(map[string]V, len(opts.ids))
 	for call, callIDs := range callIDs {
 		call.Wait()
-		if call.err != nil {
+		// It could be only cached records here, if we we're able
+		// to get some of the IDs from the distributed storage.
+		if call.err != nil && !errors.Is(call.err, ErrOnlyCachedRecords) {
 			return response, call.err
+		}
+
+		if errors.Is(call.err, ErrOnlyCachedRecords) {
+			err = ErrOnlyCachedRecords
 		}
 
 		// We need to iterate through the values that we want from this call. The
@@ -186,5 +197,5 @@ func callAndCacheBatch[V, T any](ctx context.Context, c *Client[T], opts callBat
 		}
 	}
 
-	return response, nil
+	return response, err
 }
