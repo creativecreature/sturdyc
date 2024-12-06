@@ -191,7 +191,7 @@ func distributedBatchFetch[V, T any](c *Client[T], keyFn KeyFn, fetchFn BatchFet
 				continue
 			}
 
-			// If distributedStaleStorage isn't enabled it means all records are fresh, otherwise checked the CreatedAt time.
+			// If early refreshes isn't enabled it means all records are fresh, otherwise we'll check the CreatedAt time.
 			if !c.distributedEarlyRefreshes || c.clock.Since(record.CreatedAt) < c.distributedRefreshAfterDuration {
 				// We never want to return missing records.
 				if !record.IsMissingRecord {

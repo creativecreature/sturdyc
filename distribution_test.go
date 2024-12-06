@@ -3,6 +3,7 @@ package sturdyc_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -740,15 +741,13 @@ func TestDistributedStorageDoesNotCachePartialResponseAsMissingRecords(t *testin
 		t.Fatalf("expected cache size to be 0, got %d", c.Size())
 	}
 
-	// Now we'll want to go past the stale time, and setup the fetch observer so
-	// that it errors. We should still be able to retrieve the records that we have
-	// in the distributed cache, and the remaining ID that we're going to add to the
-	// batch should not be stored as a missing record.
-	clock.Add(refreshAfter + 1)
+	// Now we'll add a new id to the batch that we're going to fetch. Next, we'll
+	// set up the fetch observer so that it errors. We should still be able to
+	// retrieve the records that we have in the distributed cache, and assert
+	// that the remaining ID  should not be stored as a missing record.
+	secondBatchOfIDs := []string{"1", "2", "3", "4"}
 	fetchObserver.Err(errors.New("boom"))
-	res, err := sturdyc.GetOrFetchBatch(ctx, c, []string{"1", "2", "3", "4"}, keyFn, fetchObserver.FetchBatch)
-	// Assert that the records are still present in our distributed storage.
-	distributedStorage.assertRecords(t, batchOfIDs, keyFn)
+	res, err := sturdyc.GetOrFetchBatch(ctx, c, secondBatchOfIDs, keyFn, fetchObserver.FetchBatch)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -757,11 +756,116 @@ func TestDistributedStorageDoesNotCachePartialResponseAsMissingRecords(t *testin
 	}
 
 	<-fetchObserver.FetchCompleted
-	fetchObserver.AssertRequestedRecords(t, []string{"1", "2", "3", "4"})
+	fetchObserver.AssertRequestedRecords(t, []string{"4"})
 	fetchObserver.AssertFetchCount(t, 2)
 	fetchObserver.Clear()
 
+	// The 3 records we had in the distributed cache should have been synced to
+	// the in-memory cache. If we had 4  records here, it would mean that we
+	// cached the last record as a missing record when the fetch observer errored
+	// out. That is not the behaviour we want.
 	if c.Size() != 3 {
 		t.Fatalf("expected 3 records, got %d", c.Size())
+	}
+}
+
+func TestPartialResponseForRefreshesDoesNotResultInMissingRecords(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	capacity := 1000
+	numShards := 50
+	evictionPercentage := 10
+	ttl := time.Hour
+	minRefreshDelay := time.Minute * 5
+	maxRefreshDelay := time.Minute * 10
+	refreshRetryInterval := time.Millisecond * 10
+	batchSize := 10
+	batchBufferTimeout := time.Minute
+	refreshAfter := minRefreshDelay
+	distributedStorage := &mockStorage{}
+	clock := sturdyc.NewTestClock(time.Now())
+
+	c := sturdyc.New[string](capacity, numShards, ttl, evictionPercentage,
+		sturdyc.WithNoContinuousEvictions(),
+		sturdyc.WithEarlyRefreshes(minRefreshDelay, maxRefreshDelay, refreshRetryInterval),
+		sturdyc.WithMissingRecordStorage(),
+		sturdyc.WithRefreshCoalescing(batchSize, batchBufferTimeout),
+		sturdyc.WithDistributedStorageEarlyRefreshes(distributedStorage, refreshAfter),
+		sturdyc.WithClock(clock),
+	)
+
+	keyFn := c.BatchKeyFn("item")
+	ids := make([]string, 0, 100)
+	for i := 1; i <= 100; i++ {
+		ids = append(ids, strconv.Itoa(i))
+	}
+
+	fetchObserver := NewFetchObserver(11)
+	fetchObserver.BatchResponse(ids)
+	res, err := sturdyc.GetOrFetchBatch(ctx, c, ids, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(res) != 100 {
+		t.Fatalf("expected 100 records, got %d", len(res))
+	}
+
+	<-fetchObserver.FetchCompleted
+	fetchObserver.AssertFetchCount(t, 1)
+	fetchObserver.AssertRequestedRecords(t, ids)
+	fetchObserver.Clear()
+
+	// We need to add a sleep because the keys are written asynchonously to the
+	// distributed storage. We expect that the distributed storage was queried
+	// for the ids before we went to the underlying data source, and then written
+	// to when it resulted in a cache miss and the data was in fact fetched.
+	time.Sleep(100 * time.Millisecond)
+	distributedStorage.assertRecords(t, ids, keyFn)
+	distributedStorage.assertGetCount(t, 1)
+	distributedStorage.assertSetCount(t, 1)
+
+	// Next, we'll move the clock past the maxRefreshDelay. This should guarantee
+	// that the next records we request gets scheduled for a refresh. We're also
+	// going to add two more ids to the batch and make the fetchObserver error.
+	// What should happen is the following: The cache queries the distributed
+	// storage and sees that ID 1-100 are due for a refresh, and that ID 101 and
+	// 102 are missing. Hence, it queries the underlying data source for all of
+	// them. When the underlying data source returns an error, we should get the
+	// records we have in the distributed cache back. The cache should still only
+	// contain 100 records because we can't tell if ID 101 and 102 are missing or
+	// not.
+	clock.Add(maxRefreshDelay + time.Second)
+	fetchObserver.Err(errors.New("boom"))
+	secondBatchOfIDs := make([]string, 0, 102)
+	for i := 1; i <= 102; i++ {
+		secondBatchOfIDs = append(secondBatchOfIDs, strconv.Itoa(i))
+	}
+	res, err = sturdyc.GetOrFetchBatch(ctx, c, secondBatchOfIDs, keyFn, fetchObserver.FetchBatch)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(res) != 100 {
+		t.Fatalf("expected 100 records, got %d", len(res))
+	}
+
+	// The fetch observer should be called 11 times. 10 times for the batches of
+	// ids that we tried to refresh, and once for id 101 and 102 which we didn't
+	// have in the cache.
+	for i := 0; i < 11; i++ {
+		<-fetchObserver.FetchCompleted
+	}
+	fetchObserver.AssertFetchCount(t, 12)
+
+	// Assert that the distributed storage was queried when we
+	// tried to refresh the records we had in the memory cache.
+	distributedStorage.assertGetCount(t, 12)
+	distributedStorage.assertSetCount(t, 1)
+
+	// The in-memory cache should only have 100 records because we can't tell if
+	// ID 101 and 102 are missing or not because the fetch observer errored out
+	// when we tried to fetch them.
+	if c.Size() != 100 {
+		t.Fatalf("expected cache size to be 100, got %d", c.Size())
 	}
 }
